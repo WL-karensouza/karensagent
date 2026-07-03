@@ -31,8 +31,8 @@
 | 模块 | 借鉴点 | 本项目简化方案 |
 |------|--------|--------------|
 | **Agent 编排** | 多 Agent 流水线（Technical → Intel → Risk → Decision） | 单 Agent + 内部 Skills 拆分，不引入多 Agent 通信复杂度 |
-| **数据源抽象** | `data_provider/` 统一接口，12 种数据源 fallback | 先用 akshare 单一数据源，接口预留扩展 |
-| **技能系统** | `Skill` dataclass + YAML 定义 + `SkillManager` 动态加载 | 硬编码 3-4 个分析维度，接口参考 Skill 设计 |
+| **数据源抽象** | `data_provider/` 统一接口，12 种数据源 fallback | 多数据源采集（腾讯+同花顺+新浪+交易所），curl_cffi 绕过系统代理 |
+| **技能系统** | `Skill` dataclass + YAML 定义 + `SkillManager` 动态加载 | 函数式注册，6 个分析维度（技术面/资金面/消息面/基本面/风险面/市场环境） |
 | **LLM 引擎** | LiteLLM 适配 10+ 模型后端 | 直连 DeepSeek API，后续加模型切换开关 |
 | **GA 定时** | `00-daily-analysis.yml` 工作日 18:00 触发 | 参考其结构，简化为 karensAgent 版本 |
 | **分析报告 Schema** | `AnalysisReportSchema` 结构化 JSON（评分/趋势/风险/催化/操作清单） | 简化版 schema，聚焦核心字段 |
@@ -44,7 +44,7 @@
 | G1 | 每日 18:00 自动推送大盘动荡报告，总结当日市场情绪和关键变化 | 功能 |
 | G2 | Web 端输入 A 股代码，30 秒内返回结构化的个股分析报告 | 功能 |
 | G3 | 分析报告不是数据罗列，而是有独立逻辑洞察的"阅读材料" | 体验 |
-| G4 | 新增一个分析维度（如"行业对比"）≤ 50 行代码，不修改调度逻辑 | 架构 |
+| G4 | 新增一个分析维度只需写技能文件 + 一行注册，不修改调度逻辑 | 架构 |
 
 ### 2.3 非目标（本次不做）
 
@@ -111,22 +111,22 @@
 │  │  Scheduler   │ │         Stock Analysis Engine       │    │
 │  │  APScheduler │ │  ┌──────────┐ ┌──────────────────┐ │    │
 │  │  每个交易日  │ │  │ 数据采集层│ │   LLM 分析引擎   │ │    │
-│  │  18:00 执行  │ │  │ akshare   │ │   DeepSeek API   │ │    │
-│  └──────────────┘ │  │ 大盘+个股 │ │   Prompt + JSON  │ │    │
+│  │  18:00 执行  │ │  │ 腾讯+同花顺│ │   DeepSeek API   │ │    │
+│  └──────────────┘ │  │ +新浪+交易所│ │   Prompt + JSON  │ │    │
 │                   │  └──────────┘ └──────────────────┘ │    │
-│                   │  ┌─────────────────────────────────┐│    │
-│                   │  │       Skills（分析维度）         ││    │
-│                   │  │ 技术面│资金面│消息面│基本面     ││    │
-│                   │  │ (默认启用) (默认启用) (按需)     ││    │
-│                   │  └─────────────────────────────────┘│    │
+│                   │  ┌─────────────────────────────────────┐│    │
+│                   │  │         Skills（6维分析）            ││    │
+│                   │  │ 技术面│资金面│消息面│基本面│风险面  ││    │
+│                   │  │  │市场环境（全部默认启用）           ││    │
+│                   │  └─────────────────────────────────────┘│    │
 │                   └────────────────────────────────────┘    │
 │  ┌──────────────────────────────────────────────────────┐   │
-│  │  Database: SQLite (dev) / MySQL (prod)               │   │
+│  │  Database: MySQL（本地开发/生产统一）                   │   │
 │  │  Tables: stock_reports, stock_watchlist, push_history │   │
 │  └──────────────────────────────────────────────────────┘   │
 ├─────────────────────────────────────────────────────────────┤
 │  外部服务                                                     │
-│  akshare（行情数据）· DeepSeek API（LLM 分析）· 飞书 Webhook  │
+│  腾讯+同花顺+新浪+交易所（行情数据）· DeepSeek API（LLM 分析）· 飞书 Webhook  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -139,7 +139,7 @@
 ┌──────────────────────────────────────────────┐
 │           fetch_market_snapshot()             │
 │  akshare: 大盘指数 / 涨跌分布 / 板块排名       │
-│           / 成交量 / 北向资金                  │
+│           / 成交量 / 北向资金（LLM知识覆盖）       │
 └────────────────────┬─────────────────────────┘
                      │
                      ▼
@@ -166,16 +166,17 @@
 POST /api/stock/analyze {stock_code: "600519"}
     │
     ├─ 1. fetch_stock_data(stock_code)
-    │     ├─ akshare 日 K 线（近 60 日）
-    │     ├─ akshare 实时行情（价/量/换手/量比）
-    │     ├─ akshare 资金流向（主力/超大单/散户）
-    │     └─ akshare 个股新闻（近 3 日）
+    │     ├─ 腾讯 K 线 API（主力，curl_cffi 直调）
+    │     ├─ 腾讯实时行情（价/量/换手/量比/PE）
+    │     ├─ 同花顺 资金流向（主力净流入排名）
+    │     ├─ 沪深交易所 融资融券（个股融资余额/融券余额）
+    │     └─ 新浪 基本面数据（PE/PB/ROE/营收增速）
     │
     ├─ 2. 对各 skill 准备 context
-    │     ├─ technical_skill: K线 + MA/MACD/RSI/BOLL 指标
-    │     ├─ capital_skill: 主力资金 + 北向资金 + 融资融券
+    │     ├─ technical_skill: K线 + MA/MACD/RSI/量比指标
+    │     ├─ capital_skill: 主力资金（同花顺）+ 融资融券（交易所）；北向资金由LLM知识覆盖
     │     ├─ news_skill: 新闻标题 + 公告摘要
-    │     └─ fundamental_skill: PE/PB/ROE/营收增速（预留）
+    │     └─ fundamental_skill: PE/PB/ROE/营收增速（新浪源）
     │
     ├─ 3. build_analysis_prompt(stock_context) → DeepSeek
     │
@@ -186,8 +187,8 @@ POST /api/stock/analyze {stock_code: "600519"}
 
 | 决策 | 选择 | 理由 |
 |------|------|------|
-| 数据源 | akshare | 免费、数据全（A股行情/资金流/新闻）、纯 Python、无需注册 |
-| LLM | DeepSeek API | 便宜（¥1/百万 token）、中文好、无需科学上网、API 稳定 |
+| 数据源 | 多源采集（腾讯+同花顺+新浪+交易所，curl_cffi 直调） | 免费、无需注册、绕过 Windows 系统代理；东方财富 API 被封堵，改用替代源 |
+| LLM | DeepSeek Reasoner API | 深度推理、中文好、便宜（¥4/百万 token）；通过数据守卫 + Prompt 约束防止幻觉 |
 | 分析模式 | 大盘自动 + 个股按需 | 大盘每日推送用户零成本；个股按需调用省 API 费用 |
 | Skills 接口 | 函数式 skill 注册 | 每个 skill 是一个函数，输入 stock_context，输出分析文本片段 |
 | Prompt 策略 | 系统指令 + 数据 context + JSON Schema 约束 | 严格的 JSON Schema 让 LLM 输出结构化、可解析的结果 |
@@ -219,14 +220,16 @@ class AnalysisSkill(Protocol):
         ...
 ```
 
-内置 4 个技能：
+内置 6 个技能（6 维分析）：
 
 | 技能 | 文件 | 分析内容 | 默认状态 |
 |------|------|----------|:---:|
 | `technical_skill` | 技术面分析 | K 线形态、均线排列、MACD/RSI/BOLL 指标解读、支撑压力位 | ✅ 启用 |
-| `capital_skill` | 资金面分析 | 主力净流入/流出、北向资金、大单中单小单分布、融资余额变化 | ✅ 启用 |
+| `capital_skill` | 资金面分析 | 主力净流入（同花顺）、融资融券（沪深交易所官方）、量价配合、换手率 | ✅ 启用 |
 | `news_skill` | 消息面分析 | 近期新闻关键词提取、利好/利空分类、公告解读 | ✅ 启用 |
-| `fundamental_skill` | 基本面分析 | PE/PB 分位、ROE、营收/利润增速、行业对比 | 📋 预留 |
+| `fundamental_skill` | 基本面分析 | PE/PB 估值水位、ROE 盈利能力、营收/利润增速、资产负债率（新浪+东方财富源） | ✅ 启用 |
+| `risk_skill` | 风险面分析 | 综合技术/资金/基本面/消息四维度风险信号 → 风险等级评定 + Top 3 警惕点 | ✅ 启用 |
+| `market_env_skill` | 市场环境分析 | 市值风格、估值风格、相对大盘强弱、板块关联（LLM 知识辅助） | ✅ 启用 |
 
 **扩展方式：** 新增一个技能只需：
 1. 在 `backend/stock_agent/skills/` 下创建新文件，实现 `AnalysisSkill` 协议
@@ -255,9 +258,19 @@ async def analyze_stock(
 **Prompt 设计原则（关键）：**
 - 系统指令明确角色："你是一个专业的 A 股分析师..."
 - 数据与指令分离：先给数据，再给分析指令
-- JSON Schema 约束输出格式，防止幻觉
+- JSON Schema 约束输出格式
 - 要求 LLM 区分"数据事实"和"分析推断"
 - 禁止给出"买入/卖出"操作建议，改为"关注点"和"风险提示"
+
+**防幻觉策略（配合 `deepseek-reasoner`）：**
+
+reasoner 模型推理能力强，但数据不足时可能自行脑补。采用三层防线：
+
+1. **数据守卫（调用前）**：`validate_data()` 检查 `latest_close`、`recent_bars` 等关键字段是否存在，缺失则拒绝调用 LLM，直接返回"数据不可用"
+2. **Prompt 约束（调用中）**：系统指令明确要求"数据不足时说'数据不足，无法判断'""结论必须有数据支撑""缺失的维度不要编造"；`temperature=0` 最大化输出确定性，确保同样数据 → 同样结论，结果可复现
+3. **输出校验（调用后）**：解析 JSON 后检查关键数值是否在合理范围（如评分 0-100、价格与输入数据一致），偏差过大时触发重试或标记"仅供参考"
+
+> 实际案例：之前 `deepseek-chat` 在没有 K 线数据时，把海澜之家 5.46 元编造成"7.5-8 元区间波动"。加入数据守卫后该问题已杜绝。
 
 ### 5.3 数据采集层
 
@@ -271,18 +284,22 @@ async def fetch_stock_data(stock_code: str) -> StockContext:
     """采集单只个股全量数据"""
 ```
 
-使用 akshare 的接口：
+使用多数据源采集，curl_cffi 直调 HTTP 接口（不依赖 Windows 系统代理）：
 
-| 数据 | akshare 函数 | 说明 |
-|------|-------------|------|
-| 大盘指数 | `stock_zh_index_daily(symbol="sh000001")` | 上证/深证/创业板 |
-| 涨跌统计 | `stock_zh_ah_spot()` 等 | 上涨/下跌/平盘家数 |
-| 板块涨跌 | `stock_board_concept_name_em()` | 概念板块排名 |
-| 个股 K 线 | `stock_zh_a_hist(symbol="600519", period="daily")` | 日 K 线（近 60 日） |
-| 个股实时 | `stock_individual_info_em(symbol="600519")` | 实时行情指标 |
-| 资金流向 | `stock_individual_fund_flow(stock="600519")` | 主力/散户资金 |
-| 个股新闻 | `stock_news_em(symbol="600519")` | 东方财富新闻 |
-| 北向资金 | `stock_hsgt_hist_em()` | 沪深港通资金流 |
+| 数据 | 数据源 | 说明 |
+|------|--------|------|
+| 大盘指数 | akshare `stock_zh_index_daily()` | 上证/深证/创业板 |
+| 涨跌统计 | 腾讯 `qt.gtimg.cn` | 上涨/下跌/平盘家数 |
+| 板块涨跌 | akshare 同花顺源 | 概念板块排名 |
+| 个股 K 线 | 腾讯 `web.ifzq.gtimg.cn`（主力）→ akshare 新浪源（fallback） | 日 K 线（近 90 日）|
+| 个股实时 | 腾讯 `qt.gtimg.cn` | 价/量/换手/量比/PE |
+| 主力资金 | 同花顺 `data.10jqka.com.cn` | 全市场主力净流入排名 |
+| 融资融券 | 上交所/深交所官方 API | 个股融资余额/融券余额 |
+| 个股新闻 | akshare 新浪源 | 近 3 日新闻标题 |
+| 基本面 | akshare 新浪源 `stock_financial_analysis_indicator()` | PE/PB/ROE/营收增速 |
+
+> ⚠️ 北向资金（沪深港通）目前仅东方财富有免费公开接口（已被封堵），同花顺/新浪/腾讯均不提供。
+> 参考 `ZhuLinsen/daily_stock_analysis` 的做法：在 Prompt 中让 LLM 结合训练知识自行考量北向资金因素，不提供实时数据。
 
 ---
 
@@ -322,9 +339,11 @@ CREATE TABLE stock_watchlist (
 );
 ```
 
-### 6.3 push_history（复用现有表，新增字段）
+### 6.3 push_history（复用现有表，需新增字段）
 
-在现有 `push_history` 表中 agent_type 字段已可区分来源（github / stock）。
+现有 `push_history` 表字段：`push_time`、`platform`（wecom/feishu）、`content_type`（daily/weekly/monthly）、`content`、`repo_count`、`news_count`、`status`。
+
+股票分析推送需新增 `agent_type` 字段（VARCHAR(20)，取值 github/stock），用于区分推送来源。
 
 ---
 
@@ -515,7 +534,7 @@ karensAgent/
 | GA workflow | 1 个 | — | ~80 行 |
 | **合计** | **13 个** | **6 个** | **~1400 行** |
 
-符合 PRD 中"新增 Agent ≤ 200 行代码"的目标吗？不完全是——股票 Agent 比 GitHub Agent 复杂，但核心引擎（analyzer.py）控制在 ~150 行，Skills 每个 ~60 行，符合"新增一个 skill ≤ 50 行"的目标。
+以上为粗略估算，实际编码以功能完整、代码简洁为准，不设硬性行数指标。
 
 ---
 
@@ -632,9 +651,9 @@ jobs:
 
 | 风险 | 概率 | 影响 | 应对 |
 |------|:---:|:---:|------|
-| akshare 接口不稳定，数据偶发失败 | 中 | 中 | 关键数据加 try/except + fallback 默认值；大盘数据缺失时推送标注"部分数据不可用" |
+| 数据源接口不稳定，数据偶发失败 | 中 | 中 | 多数据源 fallback（腾讯→新浪→akshare）；关键数据缺失时拒绝调用 LLM（data guard） |
 | DeepSeek API 返回格式不合法（不遵循 JSON Schema）| 中 | 高 | retry 机制（最多 2 次）+ 解析失败时降级为纯文本报告 |
-| LLM 幻觉（编造不存在的新闻/数据）| 中 | 高 | Prompt 中严格要求引用数据源；对"超出数据范围"的推断标注"仅供参考" |
+| LLM 幻觉（编造不存在的价格/新闻/数据）| 中 | 高 | 三层防幻觉策略：数据守卫拦截空数据 + Prompt 约束 + 输出校验；reasoner 模型配合约束可有效降低幻觉率 |
 | 个股分析耗时过长（>30s 用户不耐烦）| 低 | 中 | 只取近 60 日 K 线 + 5 条新闻，控制 context 大小；后续加 loading 动画 |
 | akshare 在 GitHub Actions 环境中安装失败 | 中 | 中 | GA workflow 加 akshare 预装测试；如不行回退到纯 HTTP 调用东方财富 API |
 
@@ -642,12 +661,13 @@ jobs:
 
 ## 14. 开放问题
 
-| # | 问题 | 优先级 |
-|---|------|:---:|
-| Q1 | DeepSeek API Key 是否已有？用什么模型版本（`deepseek-chat` / `deepseek-reasoner`）？ | 🔴 高 |
-| Q2 | 数据查询时是否已有 akshare 的使用经验？需要我先验证 akshare 关键接口的可用性吗？ | 🟡 中 |
-| Q3 | 飞书推送频率：大盘报告每天 1 次没问题，个股分析推送是否需要限制频率？ | 🟢 低 |
-| Q4 | 是否需要支持自选股批量分析（一次分析 5 只，合并报告）？ | 🟢 低 |
+| # | 问题 | 结论 | 状态 |
+|---|------|------|:---:|
+| Q1 | DeepSeek API Key 是否已有？用什么模型版本？ | API Key 已有（`.env`）；使用 `deepseek-reasoner`，深度推理能力可提升分析质量；通过数据守卫 + Prompt 约束防止幻觉 | ✅ 已关闭 |
+| Q2 | 数据源可用性是否已验证？ | 已验证，腾讯/同花顺/新浪/交易所多源采集层已建立，curl_cffi 绕过系统代理 | ✅ 已关闭 |
+| Q3 | 个股分析推送是否需要限制频率？ | 不限制，个股分析是用户手动触发，非自动推送，按需调用不会骚扰 | ✅ 已关闭 |
+| Q4 | 是否需要支持自选股批量分析？ | 不需要，保持简单：一次分析一只，多看几只就多次触发 | ✅ 已关闭 |
+| Q5 | 是否需要支持北交所（代码 8/9 开头）？ | 2026-07-03 实测 920510（丰光精密）发现腾讯 K 线 API 和 akshare 均不支持北交所，需适配独立数据源。暂不实现，后期评审。 | 🔲 待评审 |
 
 ---
 

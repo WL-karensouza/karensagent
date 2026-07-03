@@ -194,7 +194,7 @@ def _fetch_kline(stock_code: str) -> dict:
     for name, fn in [("tencent", _fetch_kline_tencent), ("akshare", _fetch_kline_akshare)]:
         try:
             if name == "akshare":
-                result = _with_timeout(lambda: fn(stock_code), timeout=15.0)
+                result = _run_with_timeout(lambda: fn(stock_code), timeout=12.0)
             else:
                 result = fn(stock_code)
             logger.info(f"K线来源: {result['source']}")
@@ -204,34 +204,24 @@ def _fetch_kline(stock_code: str) -> dict:
     raise RuntimeError(f"所有K线数据源均失败: {stock_code}")
 
 
-def _with_timeout(fn, timeout: float = 8.0):
-    """子进程超时包装（可强杀），防止 akshare 代理卡死"""
-    import multiprocessing as mp
-    parent_conn, child_conn = mp.Pipe()
+def _run_with_timeout(fn, timeout: float = 10.0):
+    """线程池超时包装，防止 akshare/网络调用卡死
 
-    def _worker(conn):
+    使用 ThreadPoolExecutor 替代 multiprocessing：
+    - Windows 兼容（无 pickle 问题）
+    - I/O 密集型任务，GIL 不影响超时控制
+    - shutdown(wait=False)：超时后不等待卡死线程，立即返回
+    """
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    try:
+        future = executor.submit(fn)
         try:
-            result = fn()
-            conn.send(("ok", result))
-        except Exception as e:
-            conn.send(("err", str(e)))
-
-    proc = mp.Process(target=_worker, args=(child_conn,))
-    proc.start()
-    child_conn.close()
-
-    ready = parent_conn.poll(timeout)
-    if not ready:
-        proc.kill()
-        proc.join(timeout=2)
-        raise TimeoutError(f"操作超时 ({timeout}s)")
-
-    status, payload = parent_conn.recv()
-    proc.join(timeout=2)
-
-    if status == "err":
-        raise RuntimeError(payload)
-    return payload
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            raise TimeoutError(f"操作超时 ({timeout}s)")
+    finally:
+        executor.shutdown(wait=False)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -262,13 +252,115 @@ def _fetch_spot_tencent(stock_code: str) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════
+# 基本面数据采集（新浪源 → akshare fallback）
+# ═══════════════════════════════════════════════════════════
+
+def _fetch_fundamental(stock_code: str) -> dict:
+    """采集基本面数据：PE/PB/ROE/营收增速/净利润增速
+
+    数据来源：akshare 财务指标（东方财富源）
+    失败时返回空 dict，不阻塞下游分析。
+    """
+    result: dict[str, Any] = {}
+
+    # ── akshare 财务指标（含 PE/PB/ROE/营收增速等）──
+    try:
+        import akshare as ak
+        fin = _run_with_timeout(lambda: ak.stock_financial_analysis_indicator(symbol=stock_code), timeout=15.0)
+        if fin is not None and not fin.empty:
+            latest = fin.iloc[-1]
+            # PE / PB
+            pe = latest.get("市盈率", None)
+            if pe is not None:
+                try:
+                    result["pe"] = round(float(pe), 2)
+                except (ValueError, TypeError):
+                    pass
+            pb = latest.get("市净率", None)
+            if pb is not None:
+                try:
+                    result["pb"] = round(float(pb), 2)
+                except (ValueError, TypeError):
+                    pass
+            # ROE
+            roe = latest.get("净资产收益率", None)
+            if roe is not None:
+                try:
+                    result["roe"] = round(float(roe), 2)
+                except (ValueError, TypeError):
+                    pass
+            # 营收增速
+            rev_growth = latest.get("营业收入同比增长", None)
+            if rev_growth is not None:
+                try:
+                    result["revenue_yoy"] = round(float(rev_growth), 2)
+                except (ValueError, TypeError):
+                    pass
+            # 净利润增速
+            profit_growth = latest.get("净利润同比增长", None)
+            if profit_growth is not None:
+                try:
+                    result["profit_yoy"] = round(float(profit_growth), 2)
+                except (ValueError, TypeError):
+                    pass
+            # 资产负债率
+            debt_ratio = latest.get("资产负债率", None)
+            if debt_ratio is not None:
+                try:
+                    result["debt_ratio"] = round(float(debt_ratio), 2)
+                except (ValueError, TypeError):
+                    pass
+            # EPS
+            eps = latest.get("基本每股收益", None)
+            if eps is not None:
+                try:
+                    result["eps"] = round(float(eps), 2)
+                except (ValueError, TypeError):
+                    pass
+            result["fin_source"] = "akshare_eastmoney"
+            logger.info("基本面财务指标来源: akshare 东方财富")
+    except Exception as e:
+        logger.warning(f"akshare 财务指标失败: {e}")
+
+    # ── fallback: 东方财富实时行情（PE/PB 补充）──
+    if "pe" not in result or "pb" not in result:
+        try:
+            import akshare as ak
+            spot = _run_with_timeout(lambda: ak.stock_zh_a_spot_em(), timeout=25.0)
+            if spot is not None and not spot.empty:
+                row = spot[spot["代码"] == stock_code]
+                if not row.empty:
+                    r = row.iloc[0]
+                    if "pe" not in result:
+                        pe_val = r.get("市盈率-动态", None)
+                        if pe_val is not None:
+                            try:
+                                result["pe"] = round(float(pe_val), 2)
+                            except (ValueError, TypeError):
+                                pass
+                    if "pb" not in result:
+                        pb_val = r.get("市净率", None)
+                        if pb_val is not None:
+                            try:
+                                result["pb"] = round(float(pb_val), 2)
+                            except (ValueError, TypeError):
+                                pass
+                    result.setdefault("pe_pb_source", "akshare_spot_em")
+                    logger.info("基本面 PE/PB 补充来源: akshare 东方财富实时行情")
+        except Exception as e:
+            logger.warning(f"akshare 实时行情 PE/PB 补充失败: {e}")
+
+    return result
+
+
+# ═══════════════════════════════════════════════════════════
 # 新闻 & 资金流（akshare）
 # ═══════════════════════════════════════════════════════════
 
 def _fetch_news_akshare(stock_code: str) -> list[dict]:
     """akshare 个股新闻"""
     import akshare as ak
-    news = ak.stock_news_em(symbol=stock_code)
+    news = _run_with_timeout(lambda: ak.stock_news_em(symbol=stock_code), timeout=10.0)
     if news.empty:
         return []
     return [
@@ -281,7 +373,7 @@ def _fetch_fund_flow_akshare(stock_code: str) -> list[dict]:
     """akshare 资金流向"""
     import akshare as ak
     market = "sh" if stock_code.startswith(("6", "5", "9")) else "sz"
-    fund = ak.stock_individual_fund_flow(stock=stock_code, market=market)
+    fund = _run_with_timeout(lambda: ak.stock_individual_fund_flow(stock=stock_code, market=market), timeout=10.0)
     if fund.empty:
         return []
     return fund.tail(5).to_dict(orient="records")
@@ -298,8 +390,10 @@ def fetch_stock_data(stock_code: str) -> dict:
         "stock_code": stock_code,
         "fetch_time": datetime.now().isoformat(),
     }
+    _total_start = time.time()
 
     # ── K 线（必须）──
+    t0 = time.time()
     try:
         result = _fetch_kline(stock_code)
         df = result["df"]
@@ -351,12 +445,13 @@ def fetch_stock_data(stock_code: str) -> dict:
         data["recent_bars"] = bars
         data["latest_close"] = round(closes[-1], 2)
         data["data_source"] = result["source"]
-        print(f"  ✅ K线: {len(df)}条, 来源={result['source']}, 收盘={closes[-1]:.2f}")
+        print(f"  ✅ K线: {len(df)}条, 来源={result['source']}, 收盘={closes[-1]:.2f}, 耗时{time.time()-t0:.1f}s")
     except Exception as e:
         data["kline_error"] = str(e)
         print(f"  ❌ K线失败: {e}")
 
     # ── 实时行情 ──
+    t0 = time.time()
     try:
         spot = _fetch_spot_tencent(stock_code)
         data["spot"] = spot
@@ -364,18 +459,22 @@ def fetch_stock_data(stock_code: str) -> dict:
         if name and name != stock_code:
             data["stock_name"] = name
             _NAME_MAP[stock_code] = name
-        print(f"  ✅ 实时行情: {data.get('stock_name', '?')}")
+        print(f"  ✅ 实时行情: {data.get('stock_name', '?')}, 耗时{time.time()-t0:.1f}s")
     except Exception as e:
         print(f"  ⚠️ 实时行情跳过: {e}")
 
     # ── 资金流（akshare，可选；eastmoney 不可用时跳过）──
     akshare_ok = data.get("data_source") == "akshare"
     if akshare_ok:
+        t0 = time.time()
         try:
             fund = _fetch_fund_flow_akshare(stock_code)
             if fund:
                 data["fund_flow_recent_5d"] = fund
-                print(f"  ✅ 资金流: {len(fund)}条")
+                print(f"  ✅ 资金流: {len(fund)}条, 耗时{time.time()-t0:.1f}s")
+        except TimeoutError:
+            data["fund_error"] = "资金流采集超时"
+            print(f"  ⚠️ 资金流超时 ({time.time()-t0:.1f}s)")
         except Exception as e:
             data["fund_error"] = str(e)
             print(f"  ⚠️ 资金流: {e}")
@@ -385,11 +484,15 @@ def fetch_stock_data(stock_code: str) -> dict:
 
     # ── 新闻（akshare，可选；eastmoney 不可用时跳过）──
     if akshare_ok:
+        t0 = time.time()
         try:
             news = _fetch_news_akshare(stock_code)
             if news:
                 data["news"] = news
-                print(f"  ✅ 新闻: {len(news)}条")
+                print(f"  ✅ 新闻: {len(news)}条, 耗时{time.time()-t0:.1f}s")
+        except TimeoutError:
+            data["news_error"] = "新闻采集超时"
+            print(f"  ⚠️ 新闻超时 ({time.time()-t0:.1f}s)")
         except Exception as e:
             data["news_error"] = str(e)
             print(f"  ⚠️ 新闻跳过: {e}")
@@ -397,6 +500,20 @@ def fetch_stock_data(stock_code: str) -> dict:
         data["news_error"] = "eastmoney不可用，跳过新闻采集"
         print(f"  ⚠️ 新闻跳过（eastmoney不可用）")
 
+    # ── 基本面（akshare 新浪/东方财富，可选）──
+    t0 = time.time()
+    try:
+        fundamental = _fetch_fundamental(stock_code)
+        if fundamental:
+            data["fundamental"] = fundamental
+            fields_found = [k for k in ["pe", "pb", "roe", "revenue_yoy", "profit_yoy"]
+                          if k in fundamental]
+            print(f"  ✅ 基本面: {'、'.join(fields_found) if fields_found else '无可用字段'}, 耗时{time.time()-t0:.1f}s")
+    except Exception as e:
+        data["fundamental_error"] = str(e)
+        print(f"  ⚠️ 基本面跳过: {e}")
+
+    print(f"  ⏱ 采集总耗时: {time.time()-_total_start:.1f}s")
     return data
 
 

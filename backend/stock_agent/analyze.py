@@ -51,31 +51,102 @@ from stock_agent.skills import SKILLS
 # 2. Prompt 构建（技能驱动）
 # ═══════════════════════════════════════════
 
-SYSTEM_PROMPT = """你是一个专业的 A 股分析师。基于提供的行情数据，对个股进行综合分析。
+# ═══════════════════════════════════════════
+# Layer 1: 角色定义 + 维度概述
+# ═══════════════════════════════════════════
+ROLE_DEFINITION = """你是一个经验丰富的 A 股投资顾问。你的读者是普通散户，他们不喜欢研报官腔，
+需要的是专业准确但像朋友聊天一样直白易懂的分析。
+能用大白话说就别堆术语，必须用术语时要加一句通俗解释。
 
-## 核心原则
+基于提供的行情数据，对个股进行六维度综合分析。
+
+## 六个分析维度
+
+| 维度 | 关注点 | 数据驱动/LLM推理 |
+|------|--------|:---:|
+| 技术面 | K线形态、均线排列、MACD/RSI、支撑压力位 | 数据驱动 |
+| 资金面 | 主力资金流向、量价配合、换手率活跃度 | 数据驱动 |
+| 消息面 | 近期新闻主题、利好/利空分类 | 数据驱动 |
+| 基本面 | PE/PB 估值水位、ROE 盈利能力、营收/利润增速 | 数据驱动 |
+| 风险面 | 技术/资金/基本面/消息面各维度风险信号汇总评级 | LLM推理 |
+| 市场环境 | 个股与大盘/板块的相对强弱、市值风格、估值风格 | 数据+LLM |"""
+
+# ═══════════════════════════════════════════
+# Layer 4: 核心分析原则
+# ═══════════════════════════════════════════
+CORE_RULES = """## 核心原则
 1. **基于数据，不编造**：结论必须有数据支撑，数据不足时说"数据不足，无法判断"
 2. **区分事实与推断**：数据直接反映的标注"数据显示"，推理判断标注"分析认为"
 3. **关注风险和催化**：每只股票必须指出 ≥2 个风险点和 ≥2 个利好催化
 4. **不给出买卖建议**：只给出观察方向，不输出"买入""卖出"
 5. **简洁有洞察**：不要罗列数据，给出逻辑联系和深层解读
+6. **说人话**：用散户听得懂的语言写报告，技术术语必须配通俗解释，insight 里至少有一句直白的生活化判断"""
 
-## 输出格式（严格 JSON）
+# ═══════════════════════════════════════════
+# Layer 5: 输出 Schema
+# ═══════════════════════════════════════════
+OUTPUT_SCHEMA = """## 输出格式（严格 JSON）
 {
   "score": 0-100,
   "decision": "看多/震荡/看空",
   "summary": "一句话总结（≤50字）",
   "sections": {
-    "技术面": {"signal": "偏多/中性/偏空", "insight": ""},
-    "资金面": {"sentiment": "积极/中性/谨慎", "insight": ""},
-    "消息面": {"sentiment": "偏多/中性/偏空", "key_themes": [], "insight": ""}
+    "技术面": {"signal": "偏多/中性/偏空", "insight": "2-3句独立洞察"},
+    "资金面": {"sentiment": "积极/中性/谨慎", "insight": "2-3句独立洞察"},
+    "消息面": {"sentiment": "偏多/中性/偏空", "key_themes": [], "insight": "2-3句独立洞察"},
+    "基本面": {"signal": "低估/合理/高估", "insight": "2-3句独立洞察"},
+    "风险面": {"level": "高/中/低", "top_risks": ["最值得警惕的风险 Top 3"], "insight": "综合风险评估"},
+    "市场环境": {"style_match": "有利/中性/不利", "insight": "个股在当前市场环境中的位置判断"}
   },
   "risks": ["风险1", "风险2"],
   "catalysts": ["利好1", "利好2"],
-  "watch_points": ["观察点1", "观察点2"]
+  "watch_points": ["观察点1", "观察点2"],
+  "position_advice": {
+    "no_position": "空仓者建议（观察等待/可关注/不建议）",
+    "has_position": "持仓者建议（继续持有/减仓观察/注意风控）"
+  },
+  "sniper_points": {
+    "ideal_range": "理想观察区间（如'5.0-5.3元附近'，基于当前价+均线支撑+前期低点综合判断）",
+    "stop_loss": "关键支撑下沿（如'跌破4.8元需警惕'，破此位中期趋势可能转弱）",
+    "take_profit": "上方压力参考（如'5.8-6.0元附近'，接近此区间注意量能是否配合突破）"
+  },
+  "signal_attribution": [
+    {"source": "技术面", "weight": 0.35, "direction": "偏空", "note": "均线空头排列+MACD死叉为主要拖累"},
+    {"source": "基本面", "weight": 0.25, "direction": "偏多", "note": "低PE+稳健ROE提供安全边际"}
+  ]
 }
 
-注意：sections 中仅包含数据可用的维度，缺失的维度不要编造。"""
+注意：
+- sections 中仅包含数据可用的维度，缺失的维度不要编造
+- position_advice 给出的是观察建议，不是买卖指令
+- sniper_points 是基于技术面的关键价位参考，不是买卖点位，必须结合当前价格和支撑压力位给出合理区间
+- signal_attribution 解释各维度对综合评分的贡献权重和方向，权重之和应为 1.0，列出所有可用维度的归因
+- score 基于各维度综合判断，60以上偏乐观，40以下偏悲观
+- 每个 section 的 insight 字段必须是你独立分析后的洞察，而非数据罗列"""
+
+
+def build_system_prompt() -> str:
+    """分层组装 system prompt
+
+    Layer 1 → 角色定义 + 维度表
+    Layer 3 → 技能分析指令（遍历 SkillMeta 注册表注入 instructions）
+    Layer 4 → 核心分析原则
+    Layer 5 → 输出 JSON Schema（含 sniper_points + signal_attribution）
+    """
+    from stock_agent.skills import SKILLS  # 延迟导入，避免循环依赖
+
+    layers = [ROLE_DEFINITION]
+
+    # Layer 3: 注入每个技能的自然语言分析指令
+    skill_parts = []
+    for skill in SKILLS:
+        skill_parts.append(f"### {skill.display_name}\n{skill.instructions}")
+    layers.append("## 各维度分析指令\n\n" + "\n\n".join(skill_parts))
+
+    layers.append(CORE_RULES)
+    layers.append(OUTPUT_SCHEMA)
+
+    return "\n\n".join(layers)
 
 
 def build_prompt(data: dict) -> str:
@@ -125,7 +196,7 @@ def build_prompt(data: dict) -> str:
     for skill in SKILLS:
         result = skill(data)
         if not result.get("enabled"):
-            skipped.append(f"{skill.__name__}: {result.get('reason', '未知')}")
+            skipped.append(f"{skill.name}: {result.get('reason', '未知')}")
     if skipped:
         parts.append(f"\n### 不可用数据\n" + "\n".join(f"- {s}" for s in skipped))
 
@@ -151,10 +222,10 @@ def analyze(data: dict) -> tuple[dict, dict]:
     resp = client.chat.completions.create(
         model="deepseek-chat",
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": build_system_prompt()},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.3,
+        temperature=0,  # 股票分析非创意写作，要求输出确定、可复现，降低幻觉风险
         max_tokens=2048,
         response_format={"type": "json_object"},
     )
@@ -195,6 +266,9 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
     tech = sections.get("技术面", report.get("technical", {}))
     capital = sections.get("资金面", report.get("capital", {}))
     news_r = sections.get("消息面", report.get("news", {}))
+    fundamental = sections.get("基本面", report.get("fundamental", {}))
+    risk = sections.get("风险面", report.get("risk", {}))
+    market_env = sections.get("市场环境", report.get("market_env", {}))
 
     # 评分条
     bar_len = 20
@@ -216,12 +290,16 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
     out.append("")
     out.append("---")
 
-    # 技术面
+    n = 0  # 章节序号
+
+    # 1. 技术面
     if tech:
+        n += 1
         t_signal = tech.get("signal") or tech.get("indicators_signal") or "N/A"
         t_insight = tech.get("insight") or tech.get("trend") or ""
         out.append("")
-        out.append("## 📊 技术面（" + str(t_signal) + "）")
+        out.append("")
+        out.append(f"**{n}. 📊 技术面（{t_signal}）**")
         out.append("")
         out.append("> " + str(t_insight))
         key_levels = tech.get("key_levels", {})
@@ -230,48 +308,151 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
             res = key_levels.get("resistance", [])
             out.append("支撑: " + str(sup) + " | 压力: " + str(res))
 
-    # 资金面
+    # 2. 资金面
     if capital:
+        n += 1
         c_sentiment = capital.get("sentiment") or "N/A"
         c_insight = capital.get("insight") or "暂无资金面数据"
         out.append("")
-        out.append("## 💰 资金面（" + str(c_sentiment) + "）")
+        out.append("")
+        out.append(f"**{n}. 💰 资金面（{c_sentiment}）**")
         out.append("")
         out.append("> " + str(c_insight))
 
-    # 消息面
+    # 3. 消息面
     if news_r:
+        n += 1
         n_sentiment = news_r.get("sentiment") or "N/A"
         themes = news_r.get("key_themes", [])
         n_insight = news_r.get("insight") or ""
         out.append("")
-        out.append("## 📰 消息面（" + str(n_sentiment) + "）")
+        out.append("")
+        out.append(f"**{n}. 📰 消息面（{n_sentiment}）**")
         if themes:
             out.append("**关键词**：" + "、".join(themes))
         out.append("")
         out.append("> " + str(n_insight))
 
-    out.append("")
-    out.append("---")
-    out.append("")
-    out.append("## ⚠️ 风险提示")
-    for r in report.get("risks", []):
-        out.append("- " + str(r))
+    # 4. 基本面
+    if fundamental:
+        n += 1
+        f_signal = fundamental.get("signal") or "N/A"
+        f_insight = fundamental.get("insight") or ""
+        out.append("")
+        out.append("")
+        out.append(f"**{n}. 📈 基本面（{f_signal}）**")
+        out.append("")
+        out.append("> " + str(f_insight))
 
-    out.append("")
-    out.append("## ✨ 利好催化")
-    for c in report.get("catalysts", []):
-        out.append("- " + str(c))
+    # 5. 风险面
+    if risk:
+        n += 1
+        r_level = risk.get("level") or "N/A"
+        r_insight = risk.get("insight") or ""
+        top_risks = risk.get("top_risks", [])
+        out.append("")
+        out.append("")
+        out.append(f"**{n}. 🚨 风险面（等级：{r_level}）**")
+        if top_risks:
+            for tr in top_risks:
+                out.append("- " + str(tr))
+        out.append("")
+        out.append("> " + str(r_insight))
 
-    out.append("")
-    out.append("## 🔍 关注点")
-    for w in report.get("watch_points", []):
-        out.append("- " + str(w))
+    # 6. 市场环境
+    if market_env:
+        n += 1
+        m_style = market_env.get("style_match") or "N/A"
+        m_insight = market_env.get("insight") or ""
+        out.append("")
+        out.append("")
+        out.append(f"**{n}. 🌐 市场环境（{m_style}）**")
+        out.append("")
+        out.append("> " + str(m_insight))
+
+    # 7. 风险提示
+    risks_list = report.get("risks", [])
+    if risks_list:
+        n += 1
+        out.append("")
+        out.append("---")
+        out.append("")
+        out.append("")
+        out.append(f"**{n}. 风险提示**")
+        for r in risks_list:
+            out.append("- " + str(r))
+
+    # 8. 利好催化
+    catalysts_list = report.get("catalysts", [])
+    if catalysts_list:
+        n += 1
+        out.append("")
+        out.append("")
+        out.append(f"**{n}. ✨ 利好催化**")
+        for c in catalysts_list:
+            out.append("- " + str(c))
+
+    # 9. 观察建议
+    pos = report.get("position_advice", {})
+    if pos:
+        n += 1
+        out.append("")
+        out.append("")
+        out.append(f"**{n}. 📋 观察建议**")
+        no_pos = pos.get("no_position", "")
+        has_pos = pos.get("has_position", "")
+        if no_pos:
+            out.append(f"- 空仓者：{no_pos}")
+        if has_pos:
+            out.append(f"- 持仓者：{has_pos}")
+
+    # 10. 关注点
+    watch_list = report.get("watch_points", [])
+    if watch_list:
+        n += 1
+        out.append("")
+        out.append("")
+        out.append(f"**{n}. 🔍 关注点**")
+        for w in watch_list:
+            out.append("- " + str(w))
+
+    # 11. 关键价位
+    sniper = report.get("sniper_points", {})
+    if sniper:
+        n += 1
+        out.append("")
+        out.append("")
+        out.append(f"**{n}. 🎯 关键价位参考**")
+        ideal = sniper.get("ideal_range", "")
+        stop = sniper.get("stop_loss", "")
+        profit = sniper.get("take_profit", "")
+        if ideal:
+            out.append(f"- 理想观察区间：{ideal}")
+        if stop:
+            out.append(f"- 风控参考：{stop}")
+        if profit:
+            out.append(f"- 上方压力参考：{profit}")
+
+    # 12. 信号归因
+    attributions = report.get("signal_attribution", [])
+    if attributions:
+        n += 1
+        out.append("")
+        out.append("")
+        out.append(f"**{n}. 📊 信号归因**")
+        out.append("")
+        for a in attributions:
+            src = a.get("source", "")
+            w = a.get("weight", 0)
+            d = a.get("direction", "")
+            note_text = a.get("note", "")
+            d_emoji = {"偏多": "🟢", "偏空": "🔴", "中性": "⚪"}.get(d, "")
+            out.append(f"{d_emoji} {src} · {w*100:.0f}% · {d} → {note_text}")
 
     out.append("")
     out.append("---")
     out.append("*生成时间：" + datetime.now().strftime("%Y-%m-%d %H:%M") + " ｜ DeepSeek ｜ Token: " + str(usage["total"]) + "*")
-    out.append("*⚠️ 以上分析仅供参考，不构成投资建议。股市有风险，投资需谨慎。*")
+    out.append("*以上分析仅供参考，不构成投资建议。股市有风险，投资需谨慎。*")
 
     return "\n".join(out)
 
@@ -288,18 +469,16 @@ def push_to_feishu(md_report: str, stock_name: str, stock_code: str):
         print("  ⚠️ 未配置 FEISHU_WEBHOOK_URL，跳过飞书推送")
         return False
 
-    # 截取摘要部分作为卡片内容
+    # 去掉 H1 标题行（飞书卡片已有 header，避免重复）
     lines = md_report.split("\n")
-    # 取前 40 行作为卡片内容
-    card_body = "\n".join(lines[:40])
-    if len(lines) > 40:
-        card_body += "\n\n...（完整报告请在终端查看）"
+    start = 2 if len(lines) > 1 and lines[1] == "" else 1
+    card_body = "\n".join(lines[start:])
 
     payload = {
         "msg_type": "interactive",
         "card": {
             "header": {
-                "title": {"tag": "plain_text", "content": f"📊 {stock_name}（{stock_code}）分析报告"},
+                "title": {"tag": "plain_text", "content": f"{stock_name}（{stock_code}）分析报告"},
                 "template": "blue"
             },
             "elements": [

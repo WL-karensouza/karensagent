@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import akshare as ak; import inspect; print\\(inspect.getfile\\(ak.stock_individual_fund_flow\\)\\)\")",
+      "Bash(python -c \"import akshare as ak; import inspect; print\\(inspect.getfile\\(ak.stock_fund_flow_individual\\)\\)\")",
+      "Bash(python -c \"import akshare as ak; import inspect; print\\(inspect.getfile\\(ak.stock_financial_abstract_ths\\)\\)\")",
+      "WebSearch",
+      "Bash(curl -s --proxy http://127.0.0.1:17891 \"https://raw.githubusercontent.com/ZhuLinsen/daily_stock_analysis/main/data_provider/akshare_fetcher.py\")",
+      "Bash(curl -s --proxy http://127.0.0.1:17891 \"https://raw.githubusercontent.com/ZhuLinsen/daily_stock_analysis/main/data_provider/fundamental_adapter.py\")",
+      "Bash(curl -s --proxy http://127.0.0.1:17891 \"https://raw.githubusercontent.com/ZhuLinsen/daily_stock_analysis/main/src/market_context.py\")",
+      "Bash(mysql -uroot -pkarens123... -h localhost karens_agent -e \"SHOW TABLES;\")",
+      "Bash(curl -s --proxy http://127.0.0.1:17891 \"https://raw.githubusercontent.com/ZhuLinsen/daily_stock_analysis/main/src/agent/skills/router.py\")",
+      "Bash(curl -s --proxy http://127.0.0.1:17891 \"https://raw.githubusercontent.com/ZhuLinsen/daily_stock_analysis/main/src/agent/skills/skill_agent.py\")"
+    ]
+  }
+}
