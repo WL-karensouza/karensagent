@@ -1,4 +1,4 @@
-"""GitHub Agent —— FastAPI 入口
+"""Karens Agent —— FastAPI 入口
 
 启动命令: uvicorn main:app --host 0.0.0.0 --port 8900 --reload
 """
@@ -20,7 +20,7 @@ from database import init_db, seed_keywords
 async def lifespan(app: FastAPI):
     """应用启动/关闭时的初始化与清理"""
     # 启动
-    print("[main] 🚀 GitHub Agent 启动中...")
+    print("[main] 🚀 Karens Agent 启动中...")
     init_db()
     seed_keywords()
     print("[main] ✅ 数据库初始化完成")
@@ -34,13 +34,13 @@ async def lifespan(app: FastAPI):
     # 关闭
     from scheduler import stop_scheduler
     stop_scheduler()
-    print("[main] 🛑 GitHub Agent 已关闭")
+    print("[main] 🛑 Karens Agent 已关闭")
 
 
 app = FastAPI(
-    title="GitHub Agent",
-    description="每日 GitHub 热榜 + AI 前沿资讯推送",
-    version="1.1.0",
+    title="Karens Agent",
+    description="多智能体平台 — GitHub 热榜 + 股票分析",
+    version="1.2.0",
     lifespan=lifespan,
 )
 
@@ -59,12 +59,14 @@ from routers.history import router as history_router
 from routers.preview import router as preview_router
 from routers.trigger import router as trigger_router
 from routers.config_api import router as config_router
+from routers.stock_api import router as stock_router
 
 app.include_router(dashboard_router)
 app.include_router(history_router)
 app.include_router(preview_router)
 app.include_router(trigger_router)
 app.include_router(config_router)
+app.include_router(stock_router)
 
 
 # ── 根路径 ──

@@ -19,6 +19,10 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
+# Windows 控制台 UTF-8 编码
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # 将 backend 加入 path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -34,7 +38,7 @@ with open(env_path, encoding="utf-8") as f:
         env_vars[key.strip()] = value.strip()
 
 os.environ.setdefault("DEEPSEEK_API_KEY", env_vars.get("DEEPSEEK_API_KEY", ""))
-FEISHU_WEBHOOK_URL = env_vars.get("FEISHU_WEBHOOK_URL", "")
+FEISHU_WEBHOOK_URL = env_vars.get("FEISHU_STOCK_WEBHOOK_URL", "")
 
 from openai import OpenAI
 
@@ -451,7 +455,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
 
     out.append("")
     out.append("---")
-    out.append("*生成时间：" + datetime.now().strftime("%Y-%m-%d %H:%M") + " ｜ DeepSeek ｜ Token: " + str(usage["total"]) + "*")
+    out.append("*生成时间：" + datetime.now().strftime("%Y-%m-%d %H:%M") + "*")
     out.append("*以上分析仅供参考，不构成投资建议。股市有风险，投资需谨慎。*")
 
     return "\n".join(out)

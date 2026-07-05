@@ -46,6 +46,7 @@ DEFAULT_KEYWORDS = [
 
 # ── 推送配置 ──
 PUSH_TIME = os.getenv("PUSH_TIME", "09:00")  # 每天推送时间
+MARKET_REPORT_TIME = os.getenv("MARKET_REPORT_TIME", "15:30")  # 每日大盘分析时间
 WEEKLY_TOP_N = int(os.getenv("WEEKLY_TOP_N", "10"))  # 周榜数量
 MONTHLY_TOP_N = int(os.getenv("MONTHLY_TOP_N", "30"))  # 月榜数量
 NEWS_TOP_N = int(os.getenv("NEWS_TOP_N", "5"))  # 资讯推送数量

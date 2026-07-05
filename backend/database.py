@@ -436,6 +436,165 @@ def get_dashboard_stats():
 
 
 # ═══════════════════════════════════════════
+# 股票分析报告
+# ═══════════════════════════════════════════
+
+def save_stock_report(stock_code: str, stock_name: str, report: dict,
+                      markdown: str = "", token_used: int = 0) -> int:
+    """保存个股分析报告，返回报告 ID"""
+    import json
+    from models import StockReport
+
+    db = SessionLocal()
+    try:
+        obj = StockReport(
+            stock_code=stock_code,
+            stock_name=stock_name,
+            score=report.get("score", 0),
+            decision=report.get("decision", ""),
+            summary=report.get("summary", ""),
+            report_json=json.dumps(report, ensure_ascii=False),
+            markdown=_strip_emoji(markdown),
+            token_used=token_used,
+        )
+        db.add(obj)
+        db.commit()
+        db.refresh(obj)
+        return obj.id
+    finally:
+        db.close()
+
+
+def get_stock_report_by_id(report_id: int) -> dict | None:
+    """按 ID 获取报告"""
+    from models import StockReport
+
+    db = SessionLocal()
+    try:
+        row = db.query(StockReport).filter(StockReport.id == report_id).first()
+        if row is None:
+            return None
+        return _model_to_dict(row)
+    finally:
+        db.close()
+
+
+def get_latest_report(stock_code: str) -> dict | None:
+    """获取指定股票的最新一份报告"""
+    from models import StockReport
+
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(StockReport)
+            .filter(StockReport.stock_code == stock_code)
+            .order_by(StockReport.id.desc())
+            .first()
+        )
+        if row is None:
+            return None
+        return _model_to_dict(row)
+    finally:
+        db.close()
+
+
+def get_stock_reports(page: int = 1, page_size: int = 10) -> tuple[list, int]:
+    """分页获取报告列表（按创建时间倒序）"""
+    from models import StockReport
+
+    db = SessionLocal()
+    try:
+        offset = (page - 1) * page_size
+        total = db.query(func.count(StockReport.id)).scalar() or 0
+        rows = (
+            db.query(StockReport)
+            .order_by(StockReport.created_at.desc())
+            .offset(offset)
+            .limit(page_size)
+            .all()
+        )
+        return [_model_to_dict(r) for r in rows], total
+    finally:
+        db.close()
+
+
+# ═══════════════════════════════════════════
+# 自选股管理
+# ═══════════════════════════════════════════
+
+def add_watchlist(stock_code: str, stock_name: str = "", notes: str = "") -> bool:
+    """添加自选股，重复返回 False"""
+    from models import StockWatchlist
+    from sqlalchemy.exc import IntegrityError
+
+    db = SessionLocal()
+    try:
+        db.add(StockWatchlist(
+            stock_code=stock_code,
+            stock_name=stock_name,
+            notes=notes,
+        ))
+        db.commit()
+        return True
+    except IntegrityError:
+        db.rollback()
+        return False
+    finally:
+        db.close()
+
+
+def get_watchlist() -> list[dict]:
+    """获取自选股列表（按 sort_order 排序）"""
+    from models import StockWatchlist
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(StockWatchlist)
+            .order_by(StockWatchlist.sort_order.asc(), StockWatchlist.added_at.desc())
+            .all()
+        )
+        return [_model_to_dict(r) for r in rows]
+    finally:
+        db.close()
+
+
+def update_watchlist(stock_code: str, updates: dict) -> bool:
+    """更新自选股字段（notes/enabled/sort_order/stock_name）"""
+    from models import StockWatchlist
+
+    db = SessionLocal()
+    try:
+        row = db.query(StockWatchlist).filter(StockWatchlist.stock_code == stock_code).first()
+        if row is None:
+            return False
+        allowed = {"notes", "enabled", "sort_order", "stock_name"}
+        for key, value in updates.items():
+            if key in allowed and hasattr(row, key):
+                setattr(row, key, value)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def delete_watchlist(stock_code: str) -> bool:
+    """删除自选股"""
+    from models import StockWatchlist
+
+    db = SessionLocal()
+    try:
+        row = db.query(StockWatchlist).filter(StockWatchlist.stock_code == stock_code).first()
+        if row is None:
+            return False
+        db.delete(row)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+# ═══════════════════════════════════════════
 # 工具函数
 # ═══════════════════════════════════════════
 

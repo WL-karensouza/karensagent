@@ -33,8 +33,23 @@ const routes = [
   /* ── 股票 Agent ── */
   {
     path: '/agent/stock',
-    component: () => import('../views/agent/StockPlaceholder.vue'),
-    meta: { agent: 'stock', title: '股票分析' },
+    component: () => import('../views/agent/StockDashboard.vue'),
+    meta: { agent: 'stock', title: '股票分析 · 仪表盘' },
+  },
+  {
+    path: '/agent/stock/report/:id',
+    component: () => import('../views/agent/StockReport.vue'),
+    meta: { agent: 'stock', title: '股票分析 · 报告详情' },
+  },
+  {
+    path: '/agent/stock/history',
+    component: () => import('../views/agent/StockHistory.vue'),
+    meta: { agent: 'stock', title: '股票分析 · 历史报告' },
+  },
+  {
+    path: '/agent/stock/settings',
+    component: () => import('../views/agent/StockSettings.vue'),
+    meta: { agent: 'stock', title: '股票分析 · 配置管理' },
   },
 
   /* ── 平台全局设置 ── */

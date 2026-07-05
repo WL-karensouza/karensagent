@@ -77,3 +77,40 @@ class Keyword(Base):
     __table_args__ = (
         {"comment": "关键词过滤配置"},
     )
+
+
+class StockReport(Base):
+    """个股分析报告"""
+    __tablename__ = "stock_reports"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_code = Column(String(10), nullable=False, comment="股票代码")
+    stock_name = Column(String(50), default="", comment="股票名称")
+    score = Column(Integer, default=0, comment="综合评分 0-100")
+    decision = Column(String(10), default="", comment="综合判断 看多/震荡/看空")
+    summary = Column(String(200), default="", comment="一句话摘要")
+    report_json = Column(Text, nullable=False, comment="完整报告 JSON")
+    markdown = Column(Text, default="", comment="Markdown 格式报告")
+    token_used = Column(Integer, default=0, comment="消耗 Token 数")
+    created_at = Column(DateTime, server_default=func.now(), comment="生成时间")
+
+    __table_args__ = (
+        {"comment": "个股分析报告"},
+    )
+
+
+class StockWatchlist(Base):
+    """自选股列表"""
+    __tablename__ = "stock_watchlist"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_code = Column(String(10), nullable=False, unique=True, comment="股票代码")
+    stock_name = Column(String(50), default="", comment="股票名称")
+    notes = Column(String(500), default="", comment="备注")
+    enabled = Column(Integer, default=1, comment="是否启用 1/0")
+    sort_order = Column(Integer, default=0, comment="排序权重")
+    added_at = Column(DateTime, server_default=func.now(), comment="添加时间")
+
+    __table_args__ = (
+        {"comment": "自选股列表"},
+    )

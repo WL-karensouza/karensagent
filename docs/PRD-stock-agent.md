@@ -2,8 +2,9 @@
 
 **作者**：王磊
 **日期**：2026-07-03
-**状态**：Phase 2 规划中
-**版本**：1.0（初稿）
+**最后更新**：2026-07-05
+**状态**：Phase 2 核心引擎已完成，API + 前端待开发
+**版本**：1.1
 
 ---
 
@@ -194,6 +195,8 @@ POST /api/stock/analyze {stock_code: "600519"}
 | Prompt 策略 | 系统指令 + 数据 context + JSON Schema 约束 | 严格的 JSON Schema 让 LLM 输出结构化、可解析的结果 |
 | 大盘定时 | APScheduler（本地）/ GitHub Actions（云端）| 双模式：本地开发用 APScheduler，GA 零成本定时 |
 | 个股分析 API | 同步接口（等待 LLM 返回）| 个股分析耗时 15-30 秒，同步等待可接受，避免轮询复杂度 |
+| 飞书推送通道 | GitHub 热榜和股票分析使用独立 Webhook | 两个消息通道互不干扰，方便分别管理机器人、调整推送频率 |
+| 报告尾部信息 | 仅显示生成时间，不暴露 LLM 模型和 Token 数 | 终端用户不需要关心底层技术细节，保持报告简洁 |
 
 ---
 
@@ -483,58 +486,83 @@ src/views/agent/
 
 ---
 
-## 9. 文件结构规划
+## 9. 文件结构
+
+### 9.1 当前实际结构（Phase 2 核心引擎已完成）
 
 ```
 karensAgent/
 ├── backend/
-│   ├── stock_agent/                 # 🆕 股票 Agent 包
+│   ├── stock_agent/                 # 股票 Agent 包
 │   │   ├── __init__.py
-│   │   ├── analyzer.py              # LLM 分析引擎
-│   │   ├── fetcher.py               # akshare 数据采集
-│   │   ├── prompts.py               # Prompt 模板管理
-│   │   ├── skills/                  # 分析技能
-│   │   │   ├── __init__.py           # Skill 协议 + 注册表
-│   │   │   ├── technical.py          # 技术面技能
-│   │   │   ├── capital.py            # 资金面技能
-│   │   │   ├── news.py               # 消息面技能
-│   │   │   └── fundamental.py        # 基本面技能（预留）
-│   │   └── schemas.py               # 数据模型（StockReport 等）
+│   │   ├── analyze.py               # 🔥 主入口：CLI + 数据采集 → LLM 分析 → Markdown 渲染 → 飞书推送（合并了 analyzer/prompts/schemas）
+│   │   ├── fetcher.py               # 多数据源采集层（腾讯+akshare+新浪+东方财富，curl_cffi 绕过系统代理）
+│   │   ├── experiment_a.py          # 实验 A：LLM 分析质量 PoC（海澜之家 600398）
+│   │   ├── skills/                  # 分析技能（6维）
+│   │   │   ├── __init__.py           # SkillMeta 协议 + 注册表 SKILLS
+│   │   │   ├── technical.py          # 技术面
+│   │   │   ├── capital.py            # 资金面
+│   │   │   ├── news.py               # 消息面
+│   │   │   ├── fundamental.py        # 基本面
+│   │   │   ├── risk.py               # 风险面
+│   │   │   └── market_env.py         # 市场环境
+│   │   ├── reports/                  # 分析报告 Markdown 输出目录
+│   │   │   ├── 600398_*.md
+│   │   │   ├── 600519_*.md
+│   │   │   └── ...
+│   ├── tests/
+│   │   └── test_stock_agent.py       # 股票 Agent 测试
 │   ├── routers/
-│   │   └── stock_api.py             # 🆕 股票 API 路由
-│   ├── models.py                    # 🔧 新增 stock_reports / stock_watchlist 表
-│   ├── main.py                      # 🔧 注册 stock_api router
-│   └── scheduler.py                # 🔧 新增大盘定时任务
+│   │   └── stock_api.py             # ⬜ 待开发：股票 API 路由
+│   ├── models.py                    # ⬜ 待新增 stock_reports / stock_watchlist 表
+│   ├── main.py                      # ⬜ 待注册 stock_api router
+│   └── scheduler.py                # ⬜ 待新增大盘定时任务
 │
-├── frontend/src/
+├── frontend/src/                    # ⬜ 全部待开发
 │   ├── views/agent/
-│   │   ├── StockDashboard.vue       # 🆕 主面板
-│   │   ├── StockReport.vue          # 🆕 报告详情
-│   │   ├── StockHistory.vue         # 🆕 历史报告
-│   │   └── StockSettings.vue        # 🆕 自选股 + Skills 配置
-│   ├── api/index.js                 # 🔧 新增 stock API 函数
-│   ├── stores/agent.js              # 🔧 新增 stock state
-│   └── router/index.js              # 🔧 新增 stock 路由
+│   │   ├── StockDashboard.vue
+│   │   ├── StockReport.vue
+│   │   ├── StockHistory.vue
+│   │   └── StockSettings.vue
+│   ├── api/index.js
+│   ├── stores/agent.js
+│   └── router/index.js
 │
 ├── .github/workflows/
-│   └── stock-analysis.yml           # 🆕 GitHub Actions 定时分析
+│   └── stock-analysis.yml           # ⬜ 待开发
 │
 └── docs/
-    ├── PRD-stock-agent.md            # 🆕 本文档
+    ├── PRD-stock-agent.md            # 本文档
     └── discovery-stock-agent.md      # 发现计划
 ```
 
-**改动量估算：**
+### 9.2 CLI 使用方式（当前可用）
 
-| 层 | 新增文件 | 修改文件 | 预估代码量 |
-|------|:---:|:---:|------|
-| 后端 - stock_agent 核心 | 7 个 | — | ~500 行 |
-| 后端 - API + 模型 | 1 个 | 3 个 | ~200 行 |
-| 前端 - 页面 | 4 个 | 3 个 | ~600 行 |
-| GA workflow | 1 个 | — | ~80 行 |
-| **合计** | **13 个** | **6 个** | **~1400 行** |
+```bash
+# 分析单只股票（终端查看报告）
+python backend/stock_agent/analyze.py 600398
 
-以上为粗略估算，实际编码以功能完整、代码简洁为准，不设硬性行数指标。
+# 分析 + 推送到飞书
+python backend/stock_agent/analyze.py 600398 --push
+
+# 批量分析（逗号分隔）
+python backend/stock_agent/analyze.py 600398,000858,300750 --push
+
+# 分析默认自选股列表
+python backend/stock_agent/analyze.py --watchlist --push
+
+# JSON 格式输出
+python backend/stock_agent/analyze.py 600398 --json
+```
+
+### 9.3 环境变量
+
+```bash
+# .env 配置
+DEEPSEEK_API_KEY=sk-...              # DeepSeek API 密钥
+FEISHU_WEBHOOK_URL=https://...       # GitHub 热榜推送 Webhook
+FEISHU_STOCK_WEBHOOK_URL=https://... # 股票分析推送 Webhook（独立通道）
+```
 
 ---
 
@@ -575,9 +603,23 @@ karensAgent/
 └────────────────────────────────────────────┘
 ```
 
-### 10.2 个股分析推送卡片（略简版）
+### 10.2 个股分析推送卡片
 
-个股推送到飞书时使用紧凑格式，完整报告在 Web 端查看。
+个股推送到飞书时使用飞书卡片消息格式，包含：
+- **蓝色标题栏**：显示"股票名称（代码）分析报告"
+- **正文**：完整 Markdown 报告（去掉 H1 标题避免与卡片 header 重复）
+- **底部注释**：Karens Agent · 股票分析 · 生成时间
+
+> ⚠️ 报告尾部仅显示生成时间，不展示 LLM 模型名称和 Token 消耗量（终端用户不需要关心底层技术细节）。
+
+### 10.3 Webhook 通道分离
+
+| 通道 | 环境变量 | 用途 |
+|------|----------|------|
+| GitHub 热榜 | `FEISHU_WEBHOOK_URL` | 每日 GitHub Trending + AI 资讯推送 |
+| 股票分析 | `FEISHU_STOCK_WEBHOOK_URL` | 个股分析报告推送 |
+
+两个通道使用独立的飞书机器人，互不干扰，便于分别管理推送频率和目标群组。
 
 ---
 
@@ -615,18 +657,23 @@ jobs:
 
 ## 12. 实现计划
 
-### Phase 2a：核心引擎（预计 4-6 小时）
+### Phase 2a：核心引擎 ✅ 已完成
 
-| # | 任务 | 文件 | 预估 |
+| # | 任务 | 文件 | 状态 |
 |---|------|------|:---:|
-| 1 | Stock Agent 目录结构 + Skill 协议定义 | `backend/stock_agent/__init__.py`, `skills/__init__.py` | 0.5h |
-| 2 | akshare 数据采集层 | `backend/stock_agent/fetcher.py` | 1h |
-| 3 | Prompt 模板 + JSON Schema | `backend/stock_agent/prompts.py`, `schemas.py` | 0.5h |
-| 4 | LLM 分析引擎 | `backend/stock_agent/analyzer.py` | 1h |
-| 5 | 技术面 + 资金面 + 消息面 3 个 Skills | `backend/stock_agent/skills/*.py` | 1h |
-| 6 | 数据库模型 + 迁移 | `backend/models.py` | 0.5h |
+| 1 | Stock Agent 目录结构 + Skill 协议定义 | `backend/stock_agent/__init__.py`, `skills/__init__.py` | ✅ |
+| 2 | 多数据源采集层（腾讯+akshare+新浪+东方财富） | `backend/stock_agent/fetcher.py` | ✅ |
+| 3 | Prompt 模板 + JSON Schema（合并在 analyze.py） | `backend/stock_agent/analyze.py` | ✅ |
+| 4 | LLM 分析引擎（DeepSeek API） | `backend/stock_agent/analyze.py` | ✅ |
+| 5 | 6 个 Skills（技术/资金/消息/基本面/风险/市场环境） | `backend/stock_agent/skills/*.py` | ✅ |
+| 6 | Markdown 报告渲染 + 飞书推送 | `backend/stock_agent/analyze.py` | ✅ |
+| 7 | Webhook 通道分离（GitHub/股票独立） | `backend/.env`, `analyze.py` | ✅ |
+| 8 | 报告尾部精简（去掉 DeepSeek/Token 信息） | `backend/stock_agent/analyze.py` | ✅ |
+| 9 | Windows UTF-8 控制台编码修复 | `backend/stock_agent/analyze.py` | ✅ |
+| 10 | 实验 A：LLM 分析质量 PoC | `backend/stock_agent/experiment_a.py` | ✅ |
+| 11 | 核心逻辑测试 | `backend/tests/test_stock_agent.py` | ✅ |
 
-### Phase 2b：API + 前端（预计 4-6 小时）
+### Phase 2b：API + 前端 ⬜ 待开发
 
 | # | 任务 | 文件 | 预估 |
 |---|------|------|:---:|
@@ -668,6 +715,9 @@ jobs:
 | Q3 | 个股分析推送是否需要限制频率？ | 不限制，个股分析是用户手动触发，非自动推送，按需调用不会骚扰 | ✅ 已关闭 |
 | Q4 | 是否需要支持自选股批量分析？ | 不需要，保持简单：一次分析一只，多看几只就多次触发 | ✅ 已关闭 |
 | Q5 | 是否需要支持北交所（代码 8/9 开头）？ | 2026-07-03 实测 920510（丰光精密）发现腾讯 K 线 API 和 akshare 均不支持北交所，需适配独立数据源。暂不实现，后期评审。 | 🔲 待评审 |
+| Q6 | GitHub 热榜和股票分析是否共用同一个飞书 Webhook？ | **不共用**。拆分为两个独立 Webhook（`FEISHU_WEBHOOK_URL` + `FEISHU_STOCK_WEBHOOK_URL`），使用不同机器人，方便分别管理推送频率和目标群组。 | ✅ 已关闭 |
+| Q7 | 报告尾部是否需要展示 LLM 模型名和 Token 消耗？ | **不展示**。终端用户不需要关心底层技术细节，仅保留生成时间即可。 | ✅ 已关闭 |
+| Q8 | Windows 控制台中文/Emoji 输出乱码如何解决？ | 在 `analyze.py` 入口处添加 `sys.stdout.reconfigure(encoding="utf-8")` 强制 UTF-8 输出。 | ✅ 已关闭 |
 
 ---
 
