@@ -9,7 +9,7 @@
   POST   /api/stock/watchlist            — 添加自选股
   DELETE /api/stock/watchlist/{code}     — 删除自选股
   PUT    /api/stock/watchlist/{code}     — 更新自选股
-  POST   /api/stock/trigger/market-report — 触发大盘报告
+  POST   /api/stock/trigger/market-report — 触发自选股分析
 """
 
 import uuid
@@ -108,17 +108,27 @@ def _run_analysis(task_id: str, stock_code: str):
         }
 
 
-def _run_market_report(task_id: str):
-    """后台执行大盘报告（简化版：分析默认自选股列表）"""
+def _run_watchlist_analyze(task_id: str):
+    """后台执行自选股分析：从数据库读取启用状态的自选股，逐只分析（不推送飞书）"""
     try:
         from stock_agent.fetcher import fetch_stock_data
-        from stock_agent.analyze import analyze, render_markdown, push_to_feishu
-        from database import save_stock_report
+        from stock_agent.analyze import analyze, render_markdown
+        from database import save_stock_report, get_watchlist
 
-        DEFAULT_WATCHLIST = ["600398", "600519", "000858"]
+        watchlist = get_watchlist()
+        # 只分析启用状态的自选股（enabled 默认 1）
+        codes = [item["stock_code"] for item in watchlist if item.get("enabled", 1)]
+        if not codes:
+            _stock_tasks[task_id] = {
+                "status": "done",
+                "results": [],
+                "message": "自选股列表为空，无需分析",
+                "_created": _stock_tasks[task_id]["_created"],
+            }
+            return
+
         results = []
-
-        for code in DEFAULT_WATCHLIST:
+        for code in codes:
             try:
                 data = fetch_stock_data(code)
                 report, usage = analyze(data)
@@ -128,15 +138,15 @@ def _run_market_report(task_id: str):
                     stock_code=code, stock_name=stock_name,
                     report=report, markdown=md, token_used=usage.get("total", 0),
                 )
-                push_to_feishu(md, stock_name, code)
                 results.append({"code": code, "name": stock_name, "ok": True})
             except Exception as e:
                 results.append({"code": code, "name": code, "ok": False, "error": str(e)})
 
+        ok_count = sum(1 for r in results if r["ok"])
         _stock_tasks[task_id] = {
             "status": "done",
             "results": results,
-            "message": f"大盘报告完成，分析了 {len(results)} 只股票",
+            "message": f"自选股分析完成：{ok_count}/{len(results)} 成功",
             "_created": _stock_tasks[task_id]["_created"],
         }
     except Exception as e:
@@ -247,9 +257,26 @@ def update_watchlist_item(stock_code: str, item: WatchlistUpdate):
     return {"code": 0, "message": f"已更新 [{stock_code}]"}
 
 
+@router.post("/reports/{report_id}/push")
+def push_report(report_id: int):
+    """推送指定报告到飞书"""
+    from database import get_stock_report_by_id
+    from stock_agent.analyze import push_to_feishu
+
+    row = get_stock_report_by_id(report_id)
+    if not row:
+        return {"code": 1, "message": "报告不存在"}
+
+    ok = push_to_feishu(row["markdown"], row["stock_name"], row["stock_code"])
+    if ok:
+        return {"code": 0, "message": f"已推送 {row['stock_name']}({row['stock_code']}) 到飞书"}
+    else:
+        return {"code": 1, "message": "推送失败，请检查飞书 Webhook 配置"}
+
+
 @router.post("/trigger/market-report")
 def trigger_market_report():
-    """手动触发大盘报告（后台异步执行）"""
+    """手动触发自选股分析（后台异步执行，从数据库自选股表读取，不推送飞书）"""
     task_id = _create_task()
-    threading.Thread(target=_run_market_report, args=(task_id,), daemon=True).start()
-    return {"code": 0, "task_id": task_id, "message": "已触发大盘报告"}
+    threading.Thread(target=_run_watchlist_analyze, args=(task_id,), daemon=True).start()
+    return {"code": 0, "task_id": task_id, "message": "已触发自选股分析"}

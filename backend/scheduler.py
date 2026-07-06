@@ -175,47 +175,9 @@ def daily_fetch_and_push():
     print(f"[scheduler] ✅ 任务完成\n")
 
 
-def daily_market_report():
-    """
-    每日大盘分析定时任务：
-    分析默认自选股列表并推送至飞书
-    """
-    today = datetime.now().strftime("%Y-%m-%d")
-    print(f"\n{'='*50}")
-    print(f"[scheduler] 📊 大盘分析触发 — {today}")
-    print(f"{'='*50}")
-
-    DEFAULT_WATCHLIST = ["600398", "600519", "000858"]
-    ok_count = 0
-
-    for code in DEFAULT_WATCHLIST:
-        try:
-            from stock_agent.fetcher import fetch_stock_data
-            from stock_agent.analyze import analyze, render_markdown, push_to_feishu
-            from database import save_stock_report
-
-            data = fetch_stock_data(code)
-            report, usage = analyze(data)
-            md = render_markdown(data, report, usage)
-            stock_name = data.get("stock_name", code)
-
-            save_stock_report(
-                stock_code=code, stock_name=stock_name,
-                report=report, markdown=md, token_used=usage.get("total", 0),
-            )
-            push_to_feishu(md, stock_name, code)
-            ok_count += 1
-            print(f"[scheduler] ✅ {stock_name}({code}) 分析完成")
-        except Exception as e:
-            print(f"[scheduler] ❌ {code} 分析失败: {e}")
-
-    print(f"[scheduler] 📊 大盘分析完成 — {ok_count}/{len(DEFAULT_WATCHLIST)} 成功\n")
-
-
 def start_scheduler():
     """启动定时任务"""
     scheduler = get_scheduler()
-    from config import MARKET_REPORT_TIME
 
     hour, minute = PUSH_TIME.split(":")
     scheduler.add_job(
@@ -229,22 +191,8 @@ def start_scheduler():
         replace_existing=True,
     )
 
-    # 大盘分析定时任务
-    try:
-        mr_hour, mr_minute = MARKET_REPORT_TIME.split(":")
-        scheduler.add_job(
-            daily_market_report,
-            "cron",
-            hour=int(mr_hour),
-            minute=int(mr_minute),
-            misfire_grace_time=120,
-            id="daily_market_report",
-            name="每日大盘分析",
-            replace_existing=True,
-        )
-        print(f"[scheduler] ✅ 大盘分析定时任务 — 每天 {MARKET_REPORT_TIME} 执行")
-    except Exception as e:
-        print(f"[scheduler] ⚠️ 大盘分析定时任务配置失败: {e}")
+    # 大盘分析定时任务已移除
+    # 用户可通过前端按钮手动触发自选股分析
 
     scheduler.start()
     print(f"[scheduler] ✅ 定时任务已启动 — 每天 {PUSH_TIME} 执行")

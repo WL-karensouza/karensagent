@@ -73,3 +73,6 @@ export const updateStockWatchlist = (stockCode, data) =>
 
 export const triggerMarketReport = () =>
   api.post('/stock/trigger/market-report')
+
+export const pushStockReport = (id) =>
+  api.post(`/stock/reports/${id}/push`)

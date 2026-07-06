@@ -13,6 +13,7 @@ onMounted(() => {
 })
 
 function goReport(id) {
+  if (!id || id <= 0) return
   router.push(`/agent/stock/report/${id}`)
 }
 

@@ -137,18 +137,30 @@ export const useStockStore = defineStore('stock', {
       return res
     },
 
-    /* ── 大盘报告 ── */
-    async triggerMarketReport() {
+    /* ── 自选股分析 ── */
+    async triggerWatchlistAnalyze() {
       try {
         const res = await api.triggerMarketReport()
         if (res.code === 0) {
-          this.showToast('已触发大盘分析')
+          this.showToast('已触发自选股分析，请稍后刷新查看')
         } else {
           this.showToast(res.message || '触发失败')
         }
         return res
       } catch (e) {
         this.showToast('触发失败: ' + (e.message || '网络错误'))
+      }
+    },
+
+    /* ── 推送飞书 ── */
+    async pushToFeishu(reportId) {
+      try {
+        const res = await api.pushStockReport(reportId)
+        const msg = res.code === 0 ? (res.message || '推送成功') : (res.message || '推送失败')
+        this.showToast(msg)
+        return res
+      } catch (e) {
+        this.showToast('推送失败: ' + (e.message || '网络错误'))
       }
     },
   },

@@ -22,6 +22,7 @@ async function handleAnalyze() {
 }
 
 function goReport(id) {
+  if (!id || id <= 0) return
   router.push(`/agent/stock/report/${id}`)
 }
 
@@ -130,8 +131,8 @@ function decisionBadge(d) {
           <button class="btn btn-outline btn-sm" @click="goHistory">
             查看历史报告
           </button>
-          <button class="btn btn-outline btn-sm" @click="store.triggerMarketReport()">
-            触发大盘报告
+          <button class="btn btn-outline btn-sm" @click="store.triggerWatchlistAnalyze()">
+            📊 自选股分析
           </button>
         </div>
       </div>
@@ -194,6 +195,7 @@ function decisionBadge(d) {
             <td style="color:var(--text-secondary);font-size:0.85rem;">{{ r.created_at?.slice(0, 16) }}</td>
             <td>
               <button class="btn btn-outline btn-sm" @click="goReport(r.id)">查看</button>
+              <button class="btn btn-outline btn-sm" style="margin-left:6px;" @click="store.pushToFeishu(r.id)">📤 推送</button>
             </td>
           </tr>
         </tbody>

@@ -283,6 +283,39 @@ def test_market_report_trigger_returns_task_id():
 
 
 # ═══════════════════════════════════════════════
+# Slice 1: 推送报告到飞书
+# ═══════════════════════════════════════════════
+
+def test_push_report_endpoint_accepts_valid_id():
+    """POST /api/stock/reports/{id}/push 应对有效 ID 返回合理响应"""
+    from database import save_stock_report
+    from fastapi.testclient import TestClient
+    from main import app
+
+    report_id = save_stock_report("600398", "海澜之家", {"score": 72}, "# 测试推送报告", 100)
+
+    client = TestClient(app)
+    resp = client.post(f"/api/stock/reports/{report_id}/push")
+    assert resp.status_code == 200, f"HTTP 应为 200，实际 {resp.status_code}"
+    data = resp.json()
+    assert "code" in data, "响应应包含 code"
+    assert "message" in data, "响应应包含 message"
+    print(f"[OK] push report valid id={report_id} — code={data['code']}, msg={data['message']}")
+
+
+def test_push_report_endpoint_rejects_invalid_id():
+    """POST /api/stock/reports/99999/push 应对不存在的 ID 返回 code=1"""
+    from fastapi.testclient import TestClient
+    from main import app
+
+    client = TestClient(app)
+    resp = client.post("/api/stock/reports/99999/push")
+    data = resp.json()
+    assert data["code"] == 1, f"不存在的报告应返回 code=1，实际 {data}"
+    print(f"[OK] push report invalid id → code=1, msg={data['message']}")
+
+
+# ═══════════════════════════════════════════════
 # 运行入口
 # ═══════════════════════════════════════════════
 
@@ -307,6 +340,9 @@ if __name__ == "__main__":
         test_reports_detail_not_found,
         test_watchlist_crud_flow,
         test_market_report_trigger_returns_task_id,
+        # Slice 1: 推送飞书
+        test_push_report_endpoint_accepts_valid_id,
+        test_push_report_endpoint_rejects_invalid_id,
     ]
 
     for test_fn in tests:

@@ -9,7 +9,13 @@ const store = useStockStore()
 const reportId = computed(() => route.params.id)
 
 onMounted(() => {
-  store.fetchReportDetail(reportId.value)
+  const id = Number(reportId.value)
+  if (!id || id <= 0) {
+    store.showToast('无效的报告 ID')
+    router.replace('/agent/stock')
+    return
+  }
+  store.fetchReportDetail(id)
 })
 
 /* 评分颜色 */
@@ -71,7 +77,7 @@ const mdHtml = computed(() => {
 async function handlePush() {
   const row = store.currentReport
   if (!row) return
-  await store.triggerMarketReport()
+  await store.pushToFeishu(row.id)
 }
 </script>
 
