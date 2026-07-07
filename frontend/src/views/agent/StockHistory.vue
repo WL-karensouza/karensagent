@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStockStore } from '../../stores/stock.js'
+import { scoreColor, decisionBadge } from '../../utils/stock.js'
 
 const router = useRouter()
 const store = useStockStore()
@@ -9,7 +10,7 @@ const page = ref(1)
 const pageSize = 10
 
 onMounted(() => {
-  store.fetchReports(page.value, pageSize)
+  store.fetchHistoryReports(page.value, pageSize)
 })
 
 function goReport(id) {
@@ -19,24 +20,11 @@ function goReport(id) {
 
 function loadPage(p) {
   page.value = p
-  store.fetchReports(p, pageSize)
+  store.fetchHistoryReports(p, pageSize)
 }
 
-const totalPages = () => Math.max(1, Math.ceil(store.reportsTotal / pageSize))
+const totalPages = () => Math.max(1, Math.ceil(store.historyReportsTotal / pageSize))
 
-/* 评分颜色 */
-function scoreColor(score) {
-  if (score >= 70) return 'var(--green)'
-  if (score >= 40) return 'var(--accent)'
-  return 'var(--red)'
-}
-
-function decisionBadge(d) {
-  if (!d) return ''
-  if (d.includes('看多')) return '🟢 ' + d
-  if (d.includes('看空')) return '🔴 ' + d
-  return '🟡 ' + d
-}
 </script>
 
 <template>
@@ -51,7 +39,7 @@ function decisionBadge(d) {
         <span class="spinner"></span> 加载中...
       </div>
 
-      <div v-else-if="store.reports.length === 0" class="empty-state">
+      <div v-else-if="store.historyReports.length === 0" class="empty-state">
         <p>暂无历史报告</p>
         <button class="btn btn-primary" style="margin-top:16px;" @click="router.push('/agent/stock')">
           去分析第一只股票
@@ -72,7 +60,7 @@ function decisionBadge(d) {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="r in store.reports" :key="r.id">
+            <tr v-for="r in store.historyReports" :key="r.id">
               <td style="font-weight:600;">{{ r.stock_name }}</td>
               <td>{{ r.stock_code }}</td>
               <td>
@@ -83,13 +71,14 @@ function decisionBadge(d) {
               <td style="color:var(--text-muted);font-size:0.85rem;">{{ r.token_used }}</td>
               <td>
                 <button class="btn btn-outline btn-sm" @click="goReport(r.id)">查看</button>
+                <button class="btn btn-outline btn-sm" style="margin-left:6px;" @click="store.pushToFeishu(r.id)">📤 推送</button>
               </td>
             </tr>
           </tbody>
         </table>
 
         <!-- 分页 -->
-        <div v-if="store.reportsTotal > pageSize" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:20px;">
+        <div v-if="store.historyReportsTotal > pageSize" style="display:flex;justify-content:center;align-items:center;gap:8px;margin-top:20px;">
           <button
             class="btn btn-outline btn-sm"
             :disabled="page <= 1"
@@ -98,7 +87,7 @@ function decisionBadge(d) {
             ← 上一页
           </button>
           <span style="font-size:0.9rem;color:var(--text-secondary);">
-            {{ page }} / {{ totalPages() }}（共 {{ store.reportsTotal }} 条）
+            {{ page }} / {{ totalPages() }}（共 {{ store.historyReportsTotal }} 条）
           </span>
           <button
             class="btn btn-outline btn-sm"

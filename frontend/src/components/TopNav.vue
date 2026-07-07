@@ -33,7 +33,6 @@ const subNavItems = computed(() => {
     ],
     stock: [
       { label: '仪表盘', to: '/agent/stock', exact: true },
-      { label: '报告详情', to: '/agent/stock/report/0', exact: false },
       { label: '历史报告', to: '/agent/stock/history' },
       { label: '配置管理', to: '/agent/stock/settings' },
     ],

@@ -1,12 +1,14 @@
 <script setup>
-import { onMounted, computed } from 'vue'
+import { onMounted, computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStockStore } from '../../stores/stock.js'
+import { scoreColor, decisionBadge } from '../../utils/stock.js'
 
 const route = useRoute()
 const router = useRouter()
 const store = useStockStore()
 const reportId = computed(() => route.params.id)
+const mounted = ref(false)
 
 onMounted(() => {
   const id = Number(reportId.value)
@@ -15,22 +17,10 @@ onMounted(() => {
     router.replace('/agent/stock')
     return
   }
-  store.fetchReportDetail(id)
+  store.fetchReportDetail(id).finally(() => {
+    mounted.value = true
+  })
 })
-
-/* 评分颜色 */
-function scoreColor(score) {
-  if (score >= 70) return 'var(--green)'
-  if (score >= 40) return 'var(--accent)'
-  return 'var(--red)'
-}
-
-function decisionBadge(d) {
-  if (!d) return ''
-  if (d.includes('看多')) return '🟢 ' + d
-  if (d.includes('看空')) return '🔴 ' + d
-  return '🟡 ' + d
-}
 
 /* 解析 report_json 为结构化数据 */
 const reportData = computed(() => {
@@ -92,10 +82,25 @@ async function handlePush() {
       </h1>
     </div>
 
-    <!-- 加载中 -->
-    <div v-if="!store.currentReport" class="card">
+    <!-- 加载中（初始未挂载时也显示 spinner，避免闪现"报告不存在"） -->
+    <div v-if="!mounted || store.reportLoading" class="card">
       <div class="loading">
         <span class="spinner"></span> 加载报告...
+      </div>
+    </div>
+
+    <!-- 加载出错 -->
+    <div v-else-if="store.reportError && !store.currentReport" class="card">
+      <div class="empty-state" style="padding:40px;text-align:center;">
+        <p style="color:var(--red);margin-bottom:16px;">{{ store.reportError }}</p>
+        <button class="btn btn-primary" @click="store.fetchReportDetail(reportId)">重试</button>
+      </div>
+    </div>
+
+    <!-- 无数据 -->
+    <div v-else-if="!store.currentReport" class="card">
+      <div class="empty-state" style="padding:40px;">
+        <p>报告不存在</p>
       </div>
     </div>
 

@@ -12,6 +12,7 @@ const newNotes = ref('')
 /* 编辑状态 */
 const editingCode = ref('')
 const editNotes = ref('')
+const editEnabled = ref(true)
 
 /* 技能列表（静态展示） */
 const skills = [
@@ -52,10 +53,14 @@ async function handleDelete(code) {
 function startEdit(item) {
   editingCode.value = item.stock_code
   editNotes.value = item.notes || ''
+  editEnabled.value = item.enabled !== 0
 }
 
 async function saveEdit(code) {
-  await store.updateWatchlist(code, { notes: editNotes.value })
+  await store.updateWatchlist(code, {
+    notes: editNotes.value,
+    enabled: editEnabled.value ? 1 : 0,
+  })
   editingCode.value = ''
 }
 
@@ -141,9 +146,17 @@ function cancelEdit() {
               </template>
             </td>
             <td>
-              <span :class="item.enabled ? 'tag active' : 'tag'" style="font-size:0.75rem;">
-                {{ item.enabled ? '启用' : '禁用' }}
-              </span>
+              <template v-if="editingCode === item.stock_code">
+                <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:0.85rem;">
+                  <input type="checkbox" v-model="editEnabled" />
+                  {{ editEnabled ? '启用' : '禁用' }}
+                </label>
+              </template>
+              <template v-else>
+                <span :class="item.enabled ? 'tag active' : 'tag'" style="font-size:0.75rem;">
+                  {{ item.enabled ? '启用' : '禁用' }}
+                </span>
+              </template>
             </td>
             <td style="color:var(--text-muted);font-size:0.8rem;">{{ item.added_at?.slice(0, 10) }}</td>
             <td>

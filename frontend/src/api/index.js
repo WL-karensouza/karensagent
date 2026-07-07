@@ -71,7 +71,7 @@ export const deleteStockWatchlist = (stockCode) =>
 export const updateStockWatchlist = (stockCode, data) =>
   api.put(`/stock/watchlist/${stockCode}`, data)
 
-export const triggerMarketReport = () =>
+export const triggerWatchlistAnalyze = () =>
   api.post('/stock/trigger/market-report')
 
 export const pushStockReport = (id) =>

@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStockStore } from '../../stores/stock.js'
+import { scoreColor, decisionBadge } from '../../utils/stock.js'
 
 const router = useRouter()
 const store = useStockStore()
@@ -9,7 +10,7 @@ const stockCode = ref('')
 
 onMounted(() => {
   store.fetchWatchlist()
-  store.fetchReports(1, 5)
+  store.fetchDashboardReports()
 })
 
 async function handleAnalyze() {
@@ -34,19 +35,6 @@ function goSettings() {
   router.push('/agent/stock/settings')
 }
 
-/* 评分颜色 */
-function scoreColor(score) {
-  if (score >= 70) return 'var(--green)'
-  if (score >= 40) return 'var(--accent)'
-  return 'var(--red)'
-}
-
-function decisionBadge(d) {
-  if (!d) return ''
-  if (d.includes('看多')) return '🟢 ' + d
-  if (d.includes('看空')) return '🔴 ' + d
-  return '🟡 ' + d
-}
 </script>
 
 <template>
@@ -102,7 +90,7 @@ function decisionBadge(d) {
     <div class="stats-grid">
       <div class="stat-card">
         <div class="stat-icon">📊</div>
-        <div class="stat-value">{{ store.reportsTotal }}</div>
+        <div class="stat-value">{{ store.dashboardReportsTotal }}</div>
         <div class="stat-label">历史报告总数</div>
       </div>
       <div class="stat-card">
@@ -113,7 +101,7 @@ function decisionBadge(d) {
       <div class="stat-card">
         <div class="stat-icon">🕐</div>
         <div class="stat-value" style="font-size:1.2rem;">
-          {{ store.reports.length > 0 ? store.reports[0].created_at?.slice(0, 10) : '暂无' }}
+          {{ store.dashboardReports.length > 0 ? store.dashboardReports[0].created_at?.slice(0, 10) : '暂无' }}
         </div>
         <div class="stat-label">最近分析日期</div>
       </div>
@@ -170,7 +158,7 @@ function decisionBadge(d) {
         <h3 style="font-size:1rem;">📋 最近分析报告</h3>
         <button class="btn btn-outline btn-sm" @click="goHistory">查看全部 →</button>
       </div>
-      <div v-if="store.reports.length === 0" class="empty-state" style="padding:40px;">
+      <div v-if="store.dashboardReports.length === 0" class="empty-state" style="padding:40px;">
         <p>暂无报告，输入股票代码开始分析</p>
       </div>
       <table v-else class="data-table">
@@ -185,7 +173,7 @@ function decisionBadge(d) {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="r in store.reports" :key="r.id">
+          <tr v-for="r in store.dashboardReports" :key="r.id">
             <td style="font-weight:600;">{{ r.stock_name }}</td>
             <td>{{ r.stock_code }}</td>
             <td>
