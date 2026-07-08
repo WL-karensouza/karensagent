@@ -369,6 +369,60 @@ def _fetch_news_akshare(stock_code: str) -> list[dict]:
     ]
 
 
+def _fetch_news_sogou(stock_code: str, stock_name: str = "") -> list[dict]:
+    """搜狗微信搜索 fallback——用股票名称搜索相关文章"""
+    from bs4 import BeautifulSoup
+    query = stock_name if stock_name else stock_code
+    try:
+        resp = http.get(
+            "https://weixin.sogou.com/weixin",
+            params={"type": "2", "query": query},
+            headers={"User-Agent": _random_ua(), "Accept": "text/html"},
+            impersonate="chrome131",
+            timeout=10,
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        items = []
+        for li in soup.select(".news-list li")[:8]:
+            a_tag = li.select_one(".txt-box h3 a")
+            time_tag = li.select_one(".s-p")
+            if a_tag:
+                items.append({
+                    "title": a_tag.get_text(strip=True),
+                    "time": time_tag.get_text(strip=True) if time_tag else "",
+                })
+        return items
+    except Exception:
+        return []
+
+
+def _fetch_news_baidu(stock_code: str) -> list[dict]:
+    """百度新闻搜索 fallback——用股票代码搜索"""
+    from bs4 import BeautifulSoup
+    try:
+        resp = http.get(
+            "https://www.baidu.com/s",
+            params={"tn": "news", "word": f"{stock_code} 股票"},
+            headers={"User-Agent": _random_ua(), "Accept": "text/html"},
+            impersonate="chrome131",
+            timeout=10,
+        )
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+        items = []
+        for div in soup.select(".result")[:8]:
+            h3 = div.select_one("h3 a")
+            if h3:
+                items.append({
+                    "title": h3.get_text(strip=True),
+                    "time": "",
+                })
+        return items
+    except Exception:
+        return []
+
+
 def _fetch_fund_flow_akshare(stock_code: str) -> list[dict]:
     """akshare 资金流向"""
     import akshare as ak
@@ -463,43 +517,58 @@ def fetch_stock_data(stock_code: str) -> dict:
     except Exception as e:
         print(f"  ⚠️ 实时行情跳过: {e}")
 
-    # ── 资金流（akshare，可选；eastmoney 不可用时跳过）──
-    akshare_ok = data.get("data_source") == "akshare"
-    if akshare_ok:
-        t0 = time.time()
-        try:
-            fund = _fetch_fund_flow_akshare(stock_code)
-            if fund:
-                data["fund_flow_recent_5d"] = fund
-                print(f"  ✅ 资金流: {len(fund)}条, 耗时{time.time()-t0:.1f}s")
-        except TimeoutError:
-            data["fund_error"] = "资金流采集超时"
-            print(f"  ⚠️ 资金流超时 ({time.time()-t0:.1f}s)")
-        except Exception as e:
-            data["fund_error"] = str(e)
-            print(f"  ⚠️ 资金流: {e}")
-    else:
-        data["fund_error"] = "eastmoney不可用，跳过资金流采集"
-        print(f"  ⚠️ 资金流跳过（eastmoney不可用）")
+    # -- 资金流（akshare，可选） --
+    t0 = time.time()
+    try:
+        fund = _fetch_fund_flow_akshare(stock_code)
+        if fund:
+            data["fund_flow_recent_5d"] = fund
+            print(f"  ✅ 资金流: {len(fund)}条, 耗时{time.time()-t0:.1f}s")
+    except TimeoutError:
+        data["fund_error"] = "资金流采集超时"
+        print(f"  ⚠️ 资金流超时 ({time.time()-t0:.1f}s)")
+    except Exception as e:
+        data["fund_error"] = str(e)
+        print(f"  ⚠️ 资金流: {e}")
 
-    # ── 新闻（akshare，可选；eastmoney 不可用时跳过）──
-    if akshare_ok:
-        t0 = time.time()
+    # -- 新闻（akshare → 搜狗微信 → 百度新闻 fallback 链） --
+    t0 = time.time()
+    news_sources = []
+    news = None
+
+    # 源1: akshare 东方财富
+    try:
+        news = _fetch_news_akshare(stock_code)
+        if news:
+            news_sources.append("akshare")
+    except (TimeoutError, Exception):
+        pass
+
+    # 源2: 搜狗微信搜索
+    if not news:
         try:
-            news = _fetch_news_akshare(stock_code)
+            stock_name = data.get("stock_name", "")
+            news = _fetch_news_sogou(stock_code, stock_name)
             if news:
-                data["news"] = news
-                print(f"  ✅ 新闻: {len(news)}条, 耗时{time.time()-t0:.1f}s")
-        except TimeoutError:
-            data["news_error"] = "新闻采集超时"
-            print(f"  ⚠️ 新闻超时 ({time.time()-t0:.1f}s)")
-        except Exception as e:
-            data["news_error"] = str(e)
-            print(f"  ⚠️ 新闻跳过: {e}")
-    else:
-        data["news_error"] = "eastmoney不可用，跳过新闻采集"
-        print(f"  ⚠️ 新闻跳过（eastmoney不可用）")
+                news_sources.append("搜狗微信")
+        except (TimeoutError, Exception):
+            pass
 
+    # 源3: 百度新闻搜索
+    if not news:
+        try:
+            news = _fetch_news_baidu(stock_code)
+            if news:
+                news_sources.append("百度新闻")
+        except (TimeoutError, Exception):
+            pass
+
+    if news:
+        data["news"] = news
+        print(f"  ✅ 新闻: {len(news)}条, 来源={news_sources[0]}, 耗时{time.time()-t0:.1f}s")
+    else:
+        data["news_error"] = "所有新闻源均不可用（akshare/搜狗微信/百度新闻）"
+        print(f"  ⚠️ 新闻: 全部不可用, 耗时{time.time()-t0:.1f}s")
     # ── 基本面（akshare 新浪/东方财富，可选）──
     t0 = time.time()
     try:

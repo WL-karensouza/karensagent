@@ -13,6 +13,15 @@
 from typing import Any
 
 
+def _get_val(row: dict, *keys):
+    """兼容不同 akshare 版本的资金流列名差异"""
+    for k in keys:
+        v = row.get(k)
+        if v is not None and v != "":
+            return v
+    return 0
+
+
 def capital_skill(data: dict) -> dict[str, Any]:
     """资金面分析——多数据源自适应"""
 
@@ -23,13 +32,13 @@ def capital_skill(data: dict) -> dict[str, Any]:
     fund_flow = data.get("fund_flow_recent_5d")
     if fund_flow:
         data_sources.append("akshare主力资金流")
-        # 计算5日累计主力净流入
+        # 计算5日累计主力净流入（兼容新旧列名）
         total_main = 0
         total_super = 0
         for f in fund_flow:
             try:
-                total_main += float(f.get("主力净流入-净额", 0) or 0)
-                total_super += float(f.get("超大单净流入-净额", 0) or 0)
+                total_main += float(_get_val(f, "主力净流入-净额", "主力净流入") or 0)
+                total_super += float(_get_val(f, "超大单净流入-净额", "超大单净流入") or 0)
             except (ValueError, TypeError):
                 pass
         fund_fields["5日主力累计净流入(万)"] = f"{total_main:+.0f}"
@@ -44,14 +53,14 @@ def capital_skill(data: dict) -> dict[str, Any]:
             direction = "主力资金平衡"
         fund_fields["主力方向"] = direction
 
-        # 近5日逐日明细
+        # 近5日逐日明细（兼容新旧列名）
         daily = []
         for f in fund_flow:
             daily.append({
                 "date": str(f.get("日期", "")),
-                "主力净流入": f.get("主力净流入-净额", "N/A"),
-                "超大单": f.get("超大单净流入-净额", "N/A"),
-                "大单": f.get("大单净流入-净额", "N/A"),
+                "主力净流入": _get_val(f, "主力净流入-净额", "主力净流入"),
+                "超大单": _get_val(f, "超大单净流入-净额", "超大单净流入"),
+                "大单": _get_val(f, "大单净流入-净额", "大单净流入"),
             })
         fund_fields["逐日明细"] = daily
 

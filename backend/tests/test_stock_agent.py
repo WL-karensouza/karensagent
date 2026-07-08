@@ -272,10 +272,174 @@ def test_render_markdown_backward_compatible():
 
 # ═══════════════════════════════════════════
 
+
+# ============================================================
+# 资金流列名兼容性（问题2修复）
+
+
+def test_output_schema_watch_points_conditional():
+    """watch_points 应要求每个观察点附带条件分析（如果A则B，如果C则D）"""
+    from stock_agent.analyze import OUTPUT_SCHEMA
+    assert 'watch_points' in OUTPUT_SCHEMA, '应包含 watch_points 字段'
+    # 关键：应出现条件分析提示
+    has_conditional = (
+        '如果' in OUTPUT_SCHEMA or
+        '例如' in OUTPUT_SCHEMA or
+        '若是' in OUTPUT_SCHEMA or
+        '意味' in OUTPUT_SCHEMA
+    )
+    assert has_conditional,         'watch_points 应要求条件分析（如: 若高开高走说明什么，若低开低走说明什么）'
+
+
+# ============================================================
+# insight 字数限制放宽（3-4句 + 消息面新闻覆盖）
+# ============================================================
+
+def test_output_schema_insight_3_to_4_sentences():
+    """OUTPUT_SCHEMA 中技术面/资金面/基本面/市场环境的 insight 应为 3-4 句"""
+    from stock_agent.analyze import OUTPUT_SCHEMA
+    count = 0
+    for marker in ["技术面", "资金面", "基本面", "市场环境"]:
+        # 每个 section 的 insight 附近应出现 3-4句
+        if "3-4句" in OUTPUT_SCHEMA:
+            count += 1
+    assert count >= 4, f"至少 4 个 section 的 insight 应改为 3-4句"
+    assert "2-3句" not in OUTPUT_SCHEMA, "不应再有 2-3句 限制"
+
+
+def test_output_schema_news_insight_covers_each_item():
+    """消息面 insight 应强调逐条覆盖新闻，而非简单字数限制"""
+    from stock_agent.analyze import OUTPUT_SCHEMA
+    # 消息面附近应出现"覆盖"、"每条"、"新闻"等关键词
+    has_coverage = (
+        "覆盖" in OUTPUT_SCHEMA or
+        "每条" in OUTPUT_SCHEMA or
+        "逐条" in OUTPUT_SCHEMA
+    )
+    assert has_coverage, "消息面 insight 应强调尽可能覆盖每条新闻"
+    assert "搜新闻" in OUTPUT_SCHEMA or "搜索" in OUTPUT_SCHEMA,         "应体现'让散户不用再去搜索新闻'的意图"
+
+
+def test_output_schema_risk_insight_unchanged():
+    """风险面 insight 不应改动——保持 '综合风险评估'"""
+    from stock_agent.analyze import OUTPUT_SCHEMA
+    assert "综合风险评估" in OUTPUT_SCHEMA, "风险面 insight 应保持不变"
+
+
+# ============================================================
+
+def test_capital_skill_new_column_names():
+    """capital_skill 应兼容新版 akshare 列名 '主力净流入-净额'"""
+    from stock_agent.skills.capital import capital_skill
+    fake_data = {
+        'stock_code': '600398',
+        'latest_close': 5.46,
+        'recent_bars': [
+            {'date': '2026-07-01', 'open': 5.40, 'high': 5.50, 'low': 5.38,
+             'close': 5.46, 'volume': 100000, 'pct_chg': 0.5},
+        ],
+        'fund_flow_recent_5d': [
+            {'日期': '2026-07-01', '主力净流入-净额': 1000, '超大单净流入-净额': 500, '大单净流入-净额': 500},
+            {'日期': '2026-06-30', '主力净流入-净额': -200, '超大单净流入-净额': -100, '大单净流入-净额': -100},
+        ],
+        'volume_ratio': 0.8, 'pct_5d': -1.5,
+        'spot': {'换手率': '3.5'},
+    }
+    result = capital_skill(fake_data)
+    assert result['enabled'] is True
+    fields = result['section']['fields']
+    assert '5日主力累计净流入(万)' in fields, '应包含主力累计净流入字段'
+    assert '+800' in fields['5日主力累计净流入(万)'], f"主力净流入应为 +800，实际 {fields['5日主力累计净流入(万)']}"
+    assert '+400' in fields['5日超大单累计净流入(万)'], f"超大单净流入应为 +400"
+
+
+def test_capital_skill_old_column_names():
+    """capital_skill 应兼容旧版 akshare 列名 '主力净流入'（无 '-净额' 后缀）"""
+    from stock_agent.skills.capital import capital_skill
+    fake_data = {
+        'stock_code': '600398',
+        'latest_close': 5.46,
+        'recent_bars': [
+            {'date': '2026-07-01', 'open': 5.40, 'high': 5.50, 'low': 5.38,
+             'close': 5.46, 'volume': 100000, 'pct_chg': 0.5},
+        ],
+        'fund_flow_recent_5d': [
+            {'日期': '2026-07-01', '主力净流入': -500, '超大单净流入': -300, '大单净流入': -200},
+        ],
+        'volume_ratio': 0.8, 'pct_5d': -1.5,
+        'spot': {'换手率': '3.5'},
+    }
+    result = capital_skill(fake_data)
+    assert result['enabled'] is True
+    fields = result['section']['fields']
+    assert '-500' in fields['5日主力累计净流入(万)'], f"应兼容旧列名，实际 {fields['5日主力累计净流入(万)']}"
+    assert '-300' in fields['5日超大单累计净流入(万)'], f"应兼容旧列名超大单"
+
+
+def test_capital_skill_skip_missing_fund_columns():
+    """capital_skill 遇到缺失的资金流字段时应跳过，不崩溃"""
+    from stock_agent.skills.capital import capital_skill
+    fake_data = {
+        'stock_code': '000001',
+        'latest_close': 10.0,
+        'recent_bars': [
+            {'date': '2026-07-01', 'open': 10.0, 'high': 10.2, 'low': 9.8,
+             'close': 10.0, 'volume': 50000, 'pct_chg': 0.0},
+        ],
+        'fund_flow_recent_5d': [
+            {'日期': '2026-07-01'},
+        ],
+        'volume_ratio': 1.0, 'pct_5d': 0.0,
+        'spot': {'换手率': '1.0'},
+    }
+    result = capital_skill(fake_data)
+    assert result['enabled'] is True, '量价推导可用，技能应启用'
+
+
+
+# ============================================================
+# 新闻 Fallback 源（问题1修复）
+# ============================================================
+
+def test_news_sogou_returns_list():
+    """_fetch_news_sogou 应返回 list[dict]，每项含 title 和 time"""
+    from stock_agent.fetcher import _fetch_news_sogou
+    result = _fetch_news_sogou("600519", "贵州茅台")
+    assert isinstance(result, list), f"应返回 list，实际 {type(result)}"
+    if result:
+        for item in result:
+            assert "title" in item, f"缺少 title 字段: {item}"
+            assert "time" in item, f"缺少 time 字段: {item}"
+            assert isinstance(item["title"], str) and len(item["title"]) > 0
+    print(f"  搜狗微信: {len(result)}条")
+
+
+def test_news_baidu_returns_list():
+    """_fetch_news_baidu 应返回 list[dict]，每项含 title 和 time"""
+    from stock_agent.fetcher import _fetch_news_baidu
+    result = _fetch_news_baidu("600519")
+    assert isinstance(result, list), f"应返回 list，实际 {type(result)}"
+    if result:
+        for item in result:
+            assert "title" in item, f"缺少 title 字段: {item}"
+            assert "time" in item, f"缺少 time 字段: {item}"
+            assert isinstance(item["title"], str) and len(item["title"]) > 0
+    print(f"  百度新闻: {len(result)}条")
+
+
+def test_news_fallback_chain_not_crash():
+    """fetch_stock_data 在新闻源全部失败时不应崩溃"""
+    from stock_agent.fetcher import fetch_stock_data
+    data = fetch_stock_data("000001")
+    assert "latest_close" in data, "核心 K 线数据不应缺失"
+    has_news = "news" in data or "news_error" in data
+    assert has_news, "应有 news 或 news_error 字段"
+
+
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["all", "skillmeta", "prompt", "schema"], default="all")
+    ap.add_argument("--mode", choices=["all", "skillmeta", "prompt", "schema", "capital", "news", "insight"], default="all")
     args = ap.parse_args()
 
     print("=" * 50)
@@ -296,6 +460,18 @@ if __name__ == "__main__":
         test_build_system_prompt_contains_all_layers()
         test_build_system_prompt_injects_skill_instructions()
         test_build_prompt_uses_skill_name()
+
+    if args.mode in ("all", "capital"):
+        print("\n-- 资金流列名兼容性 --")
+        test_capital_skill_new_column_names()
+        test_capital_skill_old_column_names()
+        test_capital_skill_skip_missing_fund_columns()
+
+    if args.mode in ("all", "news"):
+        print("\n-- 新闻 Fallback 源 --")
+        test_news_sogou_returns_list()
+        test_news_baidu_returns_list()
+        test_news_fallback_chain_not_crash()
 
     if args.mode in ("all", "schema"):
         print("\n-- 借鉴4: Schema 升级 --")

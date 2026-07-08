@@ -84,7 +84,8 @@ CORE_RULES = """## 核心原则
 3. **关注风险和催化**：每只股票必须指出 ≥2 个风险点和 ≥2 个利好催化
 4. **不给出买卖建议**：只给出观察方向，不输出"买入""卖出"
 5. **简洁有洞察**：不要罗列数据，给出逻辑联系和深层解读
-6. **说人话**：用散户听得懂的语言写报告，技术术语必须配通俗解释，insight 里至少有一句直白的生活化判断"""
+6. **说人话**：用散户听得懂的语言写报告，技术术语必须配通俗解释，insight 里至少有一句直白的生活化判断
+7. **综合评估要讲透**：summary 是对整只股票的综合判断段落，不是一句口号。必须说清楚多空双方的博弈焦点、散户最该警惕的风险点、以及判断的主要逻辑链，让散户看完 summary 就能理解这只股票的核心矛盾。"""
 
 # ═══════════════════════════════════════════
 # Layer 5: 输出 Schema
@@ -93,18 +94,18 @@ OUTPUT_SCHEMA = """## 输出格式（严格 JSON）
 {
   "score": 0-100,
   "decision": "看多/震荡/看空",
-  "summary": "一句话总结（≤50字）",
+  "summary": "综合评估段落（100-200字），需包含：①当前多空博弈的核心矛盾是什么 ②散户最该警惕的关键风险 ③整体倾向判断及主要逻辑链。用散户听得懂的大白话写，像朋友聊天一样把道理讲透，避免术语堆砌。",
   "sections": {
-    "技术面": {"signal": "偏多/中性/偏空", "insight": "2-3句独立洞察"},
-    "资金面": {"sentiment": "积极/中性/谨慎", "insight": "2-3句独立洞察"},
-    "消息面": {"sentiment": "偏多/中性/偏空", "key_themes": [], "insight": "2-3句独立洞察"},
-    "基本面": {"signal": "低估/合理/高估", "insight": "2-3句独立洞察"},
-    "风险面": {"level": "高/中/低", "top_risks": ["最值得警惕的风险 Top 3"], "insight": "综合风险评估"},
-    "市场环境": {"style_match": "有利/中性/不利", "insight": "个股在当前市场环境中的位置判断"}
+    "技术面": {"signal": "偏多/中性/偏空", "insight": "3-4句独立洞察"},
+    "资金面": {"sentiment": "积极/中性/谨慎", "insight": "3-4句独立洞察"},
+    "消息面": {"sentiment": "偏多/中性/偏空", "key_themes": [], "insight": "基于提供的每一条新闻标题，逐条展开分析其背后的含义和对股价的潜在影响。尽可能覆盖所有新闻，让散户看完报告就不用再去手机搜新闻了。"},
+    "基本面": {"signal": "低估/合理/高估", "insight": "3-4句独立洞察"},
+    "风险面": {"level": "高/中/低", "top_risks": ["识别到的风险事件（仅列事件本身，如换手率37%异常高）"], "insight": "综合风险评估"},
+    "市场环境": {"style_match": "有利/中性/不利", "insight": "3-4句独立洞察"}
   },
-  "risks": ["风险1", "风险2"],
+  "risks": ["散户注意事项（与top_risks互补：top_risks说什么风险，risks说散户该怎么办。如高换手率下追高容易被套，建议等换手率回落再关注）"],
   "catalysts": ["利好1", "利好2"],
-  "watch_points": ["观察点1", "观察点2"],
+  "watch_points": ["观察点+条件分析（每条不仅是'关注什么'，更要说明'若A则意味什么、散户该怎么做'。例如：'关注明天高开高走还是低开低走——高开高走说明做多意愿强可继续观察，低开低走则短期偏弱不宜追高''关注龙虎榜是游资还是机构主导——游资主导则短线快进快出波动大，机构主导则趋势更稳可持续跟踪'）"],
   "position_advice": {
     "no_position": "空仓者建议（观察等待/可关注/不建议）",
     "has_position": "持仓者建议（继续持有/减仓观察/注意风控）"
@@ -123,6 +124,7 @@ OUTPUT_SCHEMA = """## 输出格式（严格 JSON）
 注意：
 - sections 中仅包含数据可用的维度，缺失的维度不要编造
 - position_advice 给出的是观察建议，不是买卖指令
+- top_risks 和 risks 必须互补不能重复：top_risks 列"识别到的风险事件"，risks 写"散户面对这些风险该怎么办"
 - sniper_points 是基于技术面的关键价位参考，不是买卖点位，必须结合当前价格和支撑压力位给出合理区间
 - signal_attribution 解释各维度对综合评分的贡献权重和方向，权重之和应为 1.0，列出所有可用维度的归因
 - score 基于各维度综合判断，60以上偏乐观，40以下偏悲观
@@ -230,7 +232,7 @@ def analyze(data: dict) -> tuple[dict, dict]:
             {"role": "user", "content": user_prompt},
         ],
         temperature=0,  # 股票分析非创意写作，要求输出确定、可复现，降低幻觉风险
-        max_tokens=2048,
+        max_tokens=4096,
         response_format={"type": "json_object"},
     )
 
@@ -265,14 +267,13 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
     emoji_map = {"看多": "🟢", "震荡": "🟡", "看空": "🔴"}
     emoji = emoji_map.get(decision, "⚪")
 
-    # 兼容新旧 sections 格式
     sections = report.get("sections", {})
-    tech = sections.get("技术面", report.get("technical", {}))
-    capital = sections.get("资金面", report.get("capital", {}))
-    news_r = sections.get("消息面", report.get("news", {}))
-    fundamental = sections.get("基本面", report.get("fundamental", {}))
-    risk = sections.get("风险面", report.get("risk", {}))
-    market_env = sections.get("市场环境", report.get("market_env", {}))
+    tech = sections.get("技术面", {})
+    capital = sections.get("资金面", {})
+    news_r = sections.get("消息面", {})
+    fundamental = sections.get("基本面", {})
+    risk = sections.get("风险面", {})
+    market_env = sections.get("市场环境", {})
 
     # 评分条
     bar_len = 20
@@ -299,18 +300,13 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
     # 1. 技术面
     if tech:
         n += 1
-        t_signal = tech.get("signal") or tech.get("indicators_signal") or "N/A"
-        t_insight = tech.get("insight") or tech.get("trend") or ""
+        t_signal = tech.get("signal", "N/A")
+        t_insight = tech.get("insight", "")
         out.append("")
         out.append("")
         out.append(f"**{n}. 📊 技术面（{t_signal}）**")
         out.append("")
         out.append("> " + str(t_insight))
-        key_levels = tech.get("key_levels", {})
-        if key_levels:
-            sup = key_levels.get("support", [])
-            res = key_levels.get("resistance", [])
-            out.append("支撑: " + str(sup) + " | 压力: " + str(res))
 
     # 2. 资金面
     if capital:
