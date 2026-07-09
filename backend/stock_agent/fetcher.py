@@ -252,103 +252,78 @@ def _fetch_spot_tencent(stock_code: str) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════
-# 基本面数据采集（新浪源 → akshare fallback）
+# 基本面数据采集（东方财富 F10 → 腾讯 spot PE/PB 补充）
 # ═══════════════════════════════════════════════════════════
 
 def _fetch_fundamental(stock_code: str) -> dict:
-    """采集基本面数据：PE/PB/ROE/营收增速/净利润增速
+    """采集基本面+财务分析五维数据
 
-    数据来源：akshare 财务指标（东方财富源）
+    数据来源：东方财富 DataCenter F10 核心财务指标（curl_cffi 直连，不走代理）
+    覆盖：估值/盈利/成长/偿债/现金流五个维度
     失败时返回空 dict，不阻塞下游分析。
     """
     result: dict[str, Any] = {}
 
-    # ── akshare 财务指标（含 PE/PB/ROE/营收增速等）──
+    # ── 主源：东方财富 F10 核心财务指标（102 字段，已计算好比率）──
     try:
-        import akshare as ak
-        fin = _run_with_timeout(lambda: ak.stock_financial_analysis_indicator(symbol=stock_code), timeout=15.0)
-        if fin is not None and not fin.empty:
-            latest = fin.iloc[-1]
-            # PE / PB
-            pe = latest.get("市盈率", None)
-            if pe is not None:
-                try:
-                    result["pe"] = round(float(pe), 2)
-                except (ValueError, TypeError):
-                    pass
-            pb = latest.get("市净率", None)
-            if pb is not None:
-                try:
-                    result["pb"] = round(float(pb), 2)
-                except (ValueError, TypeError):
-                    pass
-            # ROE
-            roe = latest.get("净资产收益率", None)
-            if roe is not None:
-                try:
-                    result["roe"] = round(float(roe), 2)
-                except (ValueError, TypeError):
-                    pass
-            # 营收增速
-            rev_growth = latest.get("营业收入同比增长", None)
-            if rev_growth is not None:
-                try:
-                    result["revenue_yoy"] = round(float(rev_growth), 2)
-                except (ValueError, TypeError):
-                    pass
-            # 净利润增速
-            profit_growth = latest.get("净利润同比增长", None)
-            if profit_growth is not None:
-                try:
-                    result["profit_yoy"] = round(float(profit_growth), 2)
-                except (ValueError, TypeError):
-                    pass
-            # 资产负债率
-            debt_ratio = latest.get("资产负债率", None)
-            if debt_ratio is not None:
-                try:
-                    result["debt_ratio"] = round(float(debt_ratio), 2)
-                except (ValueError, TypeError):
-                    pass
-            # EPS
-            eps = latest.get("基本每股收益", None)
-            if eps is not None:
-                try:
-                    result["eps"] = round(float(eps), 2)
-                except (ValueError, TypeError):
-                    pass
-            result["fin_source"] = "akshare_eastmoney"
-            logger.info("基本面财务指标来源: akshare 东方财富")
-    except Exception as e:
-        logger.warning(f"akshare 财务指标失败: {e}")
+        resp = http.get(
+            "https://datacenter.eastmoney.com/api/data/v1/get",
+            params={
+                "sortColumns": "REPORT_DATE", "sortTypes": "-1",
+                "pageSize": "1", "pageNumber": "1",
+                "reportName": "RPT_F10_FINANCE_MAINFINADATA",
+                "columns": "ALL",
+                "filter": f'(SECURITY_CODE="{stock_code}")',
+            },
+            headers={"User-Agent": _random_ua()},
+            impersonate="chrome131",
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("success") and data["result"].get("data"):
+            f10 = data["result"]["data"][0]
 
-    # ── fallback: 东方财富实时行情（PE/PB 补充）──
-    if "pe" not in result or "pb" not in result:
-        try:
-            import akshare as ak
-            spot = _run_with_timeout(lambda: ak.stock_zh_a_spot_em(), timeout=25.0)
-            if spot is not None and not spot.empty:
-                row = spot[spot["代码"] == stock_code]
-                if not row.empty:
-                    r = row.iloc[0]
-                    if "pe" not in result:
-                        pe_val = r.get("市盈率-动态", None)
-                        if pe_val is not None:
-                            try:
-                                result["pe"] = round(float(pe_val), 2)
-                            except (ValueError, TypeError):
-                                pass
-                    if "pb" not in result:
-                        pb_val = r.get("市净率", None)
-                        if pb_val is not None:
-                            try:
-                                result["pb"] = round(float(pb_val), 2)
-                            except (ValueError, TypeError):
-                                pass
-                    result.setdefault("pe_pb_source", "akshare_spot_em")
-                    logger.info("基本面 PE/PB 补充来源: akshare 东方财富实时行情")
-        except Exception as e:
-            logger.warning(f"akshare 实时行情 PE/PB 补充失败: {e}")
+            def _f(key, default=None):
+                v = f10.get(key)
+                if v is None or v == "":
+                    return default
+                try:
+                    return round(float(v), 2)
+                except (ValueError, TypeError):
+                    return default
+
+            # 估值维度
+            result["eps"] = _f("EPSJB")
+            result["bps"] = _f("BPS")
+
+            # 盈利能力
+            result["gross_margin"] = _f("XSMLL")        # 销售毛利率
+            result["net_margin"] = _f("XSJLL")           # 销售净利率
+            result["roe"] = _f("ROEJQ")                  # ROE(加权)
+            result["roic"] = _f("ROIC")                  # 投入资本回报率
+
+            # 成长性
+            result["revenue_yoy"] = _f("TOTALOPERATEREVETZ")      # 营收同比增速
+            result["profit_yoy"] = _f("PARENTNETPROFITTZ")        # 净利润同比增速
+            result["deduct_profit_yoy"] = _f("KCFJCXSYJLRTZ")     # 扣非净利增速
+
+            # 偿债能力
+            result["current_ratio"] = _f("LD")             # 流动比率
+            result["quick_ratio"] = _f("SD")               # 速动比率
+            result["debt_ratio"] = _f("ZCFZL")             # 资产负债率
+            result["interest_coverage"] = _f("INTSTCOVRATE")  # 利息保障倍数
+
+            # 现金流质量
+            result["nco_netprofit_ratio"] = _f("NCO_NETPROFIT")    # 经营现金流/净利润
+            result["nco_revenue_ratio"] = _f("JYXJLYYSR")            # 经营现金流/营收
+            result["cash_liquidity_ratio"] = _f("XJLLB")            # 现金流动负债比
+            result["eps_cash"] = _f("MGJYXJJE")                     # 每股经营现金流
+
+            result["fin_source"] = "eastmoney_f10"
+            logger.info("基本面F10来源: 东方财富 DataCenter, %d个字段", len(result))
+    except Exception as e:
+        logger.warning("东方财富F10获取失败: %s", e)
 
     return result
 

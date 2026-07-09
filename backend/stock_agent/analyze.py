@@ -85,7 +85,8 @@ CORE_RULES = """## 核心原则
 4. **不给出买卖建议**：只给出观察方向，不输出"买入""卖出"
 5. **简洁有洞察**：不要罗列数据，给出逻辑联系和深层解读
 6. **说人话**：用散户听得懂的语言写报告，技术术语必须配通俗解释，insight 里至少有一句直白的生活化判断
-7. **综合评估要讲透**：summary 是对整只股票的综合判断段落，不是一句口号。必须说清楚多空双方的博弈焦点、散户最该警惕的风险点、以及判断的主要逻辑链，让散户看完 summary 就能理解这只股票的核心矛盾。"""
+7. **财务分析要厚实**：基本面及财务分析的 insight 不少于400字，但不要为了凑字数而写400字——必须把估值、盈利、成长、偿债、现金流五个维度都讲清楚，让散户读完就能判断这公司财务安不安全、赚不赚钱、利润真不真实
+8. **综合评估要讲透**：summary 是对整只股票的综合判断段落，不是一句口号。必须说清楚多空双方的博弈焦点、散户最该警惕的风险点、以及判断的主要逻辑链，让散户看完 summary 就能理解这只股票的核心矛盾。"""
 
 # ═══════════════════════════════════════════
 # Layer 5: 输出 Schema
@@ -99,7 +100,7 @@ OUTPUT_SCHEMA = """## 输出格式（严格 JSON）
     "技术面": {"signal": "偏多/中性/偏空", "insight": "3-4句独立洞察"},
     "资金面": {"sentiment": "积极/中性/谨慎", "insight": "3-4句独立洞察"},
     "消息面": {"sentiment": "偏多/中性/偏空", "key_themes": [], "insight": "基于提供的每一条新闻标题，逐条展开分析其背后的含义和对股价的潜在影响。尽可能覆盖所有新闻，让散户看完报告就不用再去手机搜新闻了。"},
-    "基本面": {"signal": "低估/合理/高估", "insight": "3-4句独立洞察"},
+    "基本面及财务分析": {"signal": "低估/合理/高估", "insight": "不少于400字财务综合分析，覆盖五维度——①估值水位（PE/PB行业对比）②盈利能力（毛利率/净利率/ROE，赚钱能力强不强）③成长性（营收/利润增速趋势，在加速还是减速）④偿债安全（流动比率/资产负债率，财务稳不稳）⑤现金流质量（经营现金流能否覆盖净利润，利润含金量高不高）。每维度1-2句，重点标注异常信号。注意：不能为了凑字数而堆砌术语，目标是让散户看完对公司的财务健康状况一清二楚"},
     "风险面": {"level": "高/中/低", "top_risks": ["识别到的风险事件（仅列事件本身，如换手率37%异常高）"], "insight": "综合风险评估"},
     "市场环境": {"style_match": "有利/中性/不利", "insight": "3-4句独立洞察"}
   },
@@ -264,14 +265,11 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
     code = data["stock_code"]
     score = report.get("score", "N/A")
     decision = report.get("decision", "N/A")
-    emoji_map = {"看多": "🟢", "震荡": "🟡", "看空": "🔴"}
-    emoji = emoji_map.get(decision, "⚪")
-
     sections = report.get("sections", {})
     tech = sections.get("技术面", {})
     capital = sections.get("资金面", {})
     news_r = sections.get("消息面", {})
-    fundamental = sections.get("基本面", {})
+    fundamental = sections.get("基本面及财务分析", sections.get("基本面", {}))
     risk = sections.get("风险面", {})
     market_env = sections.get("市场环境", {})
 
@@ -284,7 +282,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
     bar = "█" * filled + "░" * (bar_len - filled)
 
     out = []
-    out.append(f"# {emoji} {name}（{code}）分析报告")
+    out.append(f"# {name}（{code}）分析报告")
     out.append("")
     out.append("```")
     out.append(f"综合评分：{score}/100  [{bar}]")
@@ -304,7 +302,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
         t_insight = tech.get("insight", "")
         out.append("")
         out.append("")
-        out.append(f"**{n}. 📊 技术面（{t_signal}）**")
+        out.append(f"**{n}. 技术面（{t_signal}）**")
         out.append("")
         out.append("> " + str(t_insight))
 
@@ -315,7 +313,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
         c_insight = capital.get("insight") or "暂无资金面数据"
         out.append("")
         out.append("")
-        out.append(f"**{n}. 💰 资金面（{c_sentiment}）**")
+        out.append(f"**{n}. 资金面（{c_sentiment}）**")
         out.append("")
         out.append("> " + str(c_insight))
 
@@ -327,7 +325,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
         n_insight = news_r.get("insight") or ""
         out.append("")
         out.append("")
-        out.append(f"**{n}. 📰 消息面（{n_sentiment}）**")
+        out.append(f"**{n}. 消息面（{n_sentiment}）**")
         if themes:
             out.append("**关键词**：" + "、".join(themes))
         out.append("")
@@ -340,7 +338,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
         f_insight = fundamental.get("insight") or ""
         out.append("")
         out.append("")
-        out.append(f"**{n}. 📈 基本面（{f_signal}）**")
+        out.append(f"**{n}. 基本面及财务分析（{f_signal}）**")
         out.append("")
         out.append("> " + str(f_insight))
 
@@ -352,7 +350,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
         top_risks = risk.get("top_risks", [])
         out.append("")
         out.append("")
-        out.append(f"**{n}. 🚨 风险面（等级：{r_level}）**")
+        out.append(f"**{n}. 风险面（等级：{r_level}）**")
         if top_risks:
             for tr in top_risks:
                 out.append("- " + str(tr))
@@ -366,7 +364,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
         m_insight = market_env.get("insight") or ""
         out.append("")
         out.append("")
-        out.append(f"**{n}. 🌐 市场环境（{m_style}）**")
+        out.append(f"**{n}. 市场环境（{m_style}）**")
         out.append("")
         out.append("> " + str(m_insight))
 
@@ -388,7 +386,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
         n += 1
         out.append("")
         out.append("")
-        out.append(f"**{n}. ✨ 利好催化**")
+        out.append(f"**{n}. 利好催化**")
         for c in catalysts_list:
             out.append("- " + str(c))
 
@@ -398,7 +396,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
         n += 1
         out.append("")
         out.append("")
-        out.append(f"**{n}. 📋 观察建议**")
+        out.append(f"**{n}. 观察建议**")
         no_pos = pos.get("no_position", "")
         has_pos = pos.get("has_position", "")
         if no_pos:
@@ -412,7 +410,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
         n += 1
         out.append("")
         out.append("")
-        out.append(f"**{n}. 🔍 关注点**")
+        out.append(f"**{n}. 关注点**")
         for w in watch_list:
             out.append("- " + str(w))
 
@@ -422,7 +420,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
         n += 1
         out.append("")
         out.append("")
-        out.append(f"**{n}. 🎯 关键价位参考**")
+        out.append(f"**{n}. 关键价位参考**")
         ideal = sniper.get("ideal_range", "")
         stop = sniper.get("stop_loss", "")
         profit = sniper.get("take_profit", "")
@@ -439,7 +437,7 @@ def render_markdown(data: dict, report: dict, usage: dict) -> str:
         n += 1
         out.append("")
         out.append("")
-        out.append(f"**{n}. 📊 信号归因**")
+        out.append(f"**{n}. 信号归因**")
         out.append("")
         for a in attributions:
             src = a.get("source", "")

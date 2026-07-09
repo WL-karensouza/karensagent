@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from database import get_db, _strip_emoji
+from database import get_db
 from models import Keyword
 
 router = APIRouter(prefix="/api/config", tags=["config"])
@@ -48,7 +48,7 @@ def add_keyword(item: KeywordItem, db: Session = Depends(get_db)):
     if exists:
         return {"code": 1, "message": f"关键词 [{item.keyword}] 已存在"}
 
-    db.add(Keyword(keyword=_strip_emoji(item.keyword), score=item.score, enabled=item.enabled))
+    db.add(Keyword(keyword=item.keyword, score=item.score, enabled=item.enabled))
     db.commit()
     return {"code": 0, "message": f"关键词 [{item.keyword}] 已添加"}
 

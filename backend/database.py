@@ -1,19 +1,9 @@
 """数据库操作 —— SQLAlchemy + MySQL"""
 
-import re
 from datetime import date, datetime, timedelta
 from sqlalchemy import create_engine, func, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase, Session
 
-# 匹配 4 字节 UTF-8 字符（emoji 等），MySQL utf8 不支持
-_EMOJI_RE = re.compile(r'[\U00010000-\U0010FFFF]', re.UNICODE)
-
-
-def _strip_emoji(val):
-    """移除 4 字节 UTF-8 字符，MySQL utf8 无法存储"""
-    if isinstance(val, str):
-        return _EMOJI_RE.sub('', val)
-    return val
 from config import DATABASE_URL
 
 # ── 引擎与会话工厂 ──
@@ -107,7 +97,7 @@ def save_daily_trends(repos: list[dict], source: str = "daily", fetch_date: str 
             db.add(DailyTrend(
                 repo_name=r["repo_name"],
                 repo_url=r["repo_url"],
-                description=_strip_emoji(r.get("description", "")),
+                description=r.get("description", ""),
                 language=r.get("language", ""),
                 stars_today=r.get("stars_today", 0),
                 total_stars=r.get("total_stars", 0),
@@ -129,7 +119,7 @@ def save_daily_trends(repos: list[dict], source: str = "daily", fetch_date: str 
                     db.add(DailyTrend(
                         repo_name=r["repo_name"],
                         repo_url=r["repo_url"],
-                        description=_strip_emoji(r.get("description", "")),
+                        description=r.get("description", ""),
                         language=r.get("language", ""),
                         stars_today=r.get("stars_today", 0),
                         total_stars=r.get("total_stars", 0),
@@ -268,11 +258,11 @@ def save_ai_news(news_items: list[dict], date: str = ""):
                 continue
             seen_in_batch.add(url)
             db.add(AiNews(
-                title=_strip_emoji(n["title"]),
+                title=n["title"],
                 url=url,
                 source=n["source"],
                 score=n.get("score", 0),
-                summary=_strip_emoji(n.get("summary", "")),
+                summary=n.get("summary", ""),
                 fetch_date=fetch_d,
             ))
             added += 1
@@ -289,11 +279,11 @@ def save_ai_news(news_items: list[dict], date: str = ""):
                     continue
                 try:
                     db.add(AiNews(
-                        title=_strip_emoji(n["title"]),
+                        title=n["title"],
                         url=url,
                         source=n["source"],
                         score=n.get("score", 0),
-                        summary=_strip_emoji(n.get("summary", "")),
+                        summary=n.get("summary", ""),
                         fetch_date=fetch_d,
                     ))
                     db.flush()
@@ -362,7 +352,7 @@ def save_push_history(platform: str, content_type: str, content: str,
         db.add(PushHistory(
             platform=platform,
             content_type=content_type,
-            content=_strip_emoji(content),
+            content=content,
             repo_count=repo_count,
             news_count=news_count,
             status=status,
@@ -454,7 +444,7 @@ def save_stock_report(stock_code: str, stock_name: str, report: dict,
             decision=report.get("decision", ""),
             summary=report.get("summary", ""),
             report_json=json.dumps(report, ensure_ascii=False),
-            markdown=_strip_emoji(markdown),
+            markdown=markdown,
             token_used=token_used,
         )
         db.add(obj)
@@ -514,6 +504,22 @@ def get_stock_reports(page: int = 1, page_size: int = 10) -> tuple[list, int]:
             .all()
         )
         return [_model_to_dict(r) for r in rows], total
+    finally:
+        db.close()
+
+
+def delete_stock_report(stock_code: str, stock_name: str | None = None):
+    """删除指定股票代码的所有报告（测试清理用）"""
+    from models import StockReport
+
+    db = SessionLocal()
+    try:
+        q = db.query(StockReport).filter(StockReport.stock_code == stock_code)
+        if stock_name:
+            q = q.filter(StockReport.stock_name == stock_name)
+        deleted = q.delete()
+        db.commit()
+        return deleted
     finally:
         db.close()
 

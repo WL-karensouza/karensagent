@@ -41,7 +41,7 @@ def test_stock_watchlist_table_exists():
 
 def test_save_and_get_report():
     """保存一份报告，用 ID 查回，字段应一致"""
-    from database import save_stock_report, get_stock_report_by_id
+    from database import save_stock_report, get_stock_report_by_id, delete_stock_report
 
     report_data = {"score": 72, "decision": "看多", "summary": "测试摘要"}
     markdown = "# 测试报告\n这是一份测试报告。"
@@ -68,10 +68,13 @@ def test_save_and_get_report():
     assert stored_report["score"] == 72
     print(f"[OK] save & get report — id={report_id}")
 
+    # 清理
+    delete_stock_report("600398", "海澜之家")
+
 
 def test_get_latest_report():
     """同一股票插入两份报告，get_latest_report 应返回最新的"""
-    from database import save_stock_report, get_latest_report
+    from database import save_stock_report, get_latest_report, delete_stock_report
 
     id1 = save_stock_report("000001", "平安银行", {"score": 50}, "# 旧报告", 100)
     id2 = save_stock_report("000001", "平安银行", {"score": 80}, "# 新报告", 200)
@@ -81,10 +84,13 @@ def test_get_latest_report():
     assert latest["id"] == id2, f"最新报告 id 应为 {id2}，实际 {latest.get('id')}"
     print(f"[OK] get_latest_report — 旧={id1} 新={id2}")
 
+    # 清理
+    delete_stock_report("000001", "平安银行")
+
 
 def test_get_reports_pagination():
     """报告列表应支持分页"""
-    from database import save_stock_report, get_stock_reports
+    from database import save_stock_report, get_stock_reports, delete_stock_report
 
     # 插入 3 条测试数据
     for i in range(3):
@@ -96,6 +102,10 @@ def test_get_reports_pagination():
     assert len(rows) <= 2, f"page_size=2 最多返回 2 条，实际 {len(rows)}"
     assert total >= 3, f"total 应 >= 3，实际 {total}"
     print(f"[OK] reports pagination — page1: {len(rows)}/{total}")
+
+    # 清理
+    for i in range(3):
+        delete_stock_report(f"00000{i}", f"测试股{i}")
 
 
 def test_add_and_list_watchlist():
@@ -121,6 +131,10 @@ def test_add_and_list_watchlist():
     assert "000858" in codes, "列表中应包含 000858"
     print(f"[OK] add & list watchlist — {len(items)} 只")
 
+    # 清理测试数据
+    delete_watchlist("600519")
+    delete_watchlist("000858")
+
 
 def test_delete_watchlist():
     """删除自选股后列表不应再包含该股"""
@@ -138,7 +152,7 @@ def test_delete_watchlist():
 
 def test_update_watchlist():
     """更新自选股备注后应能读到新值"""
-    from database import add_watchlist, update_watchlist, get_watchlist
+    from database import add_watchlist, update_watchlist, get_watchlist, delete_watchlist
 
     add_watchlist("601318", "中国平安", "初始备注")
     ok = update_watchlist("601318", {"notes": "更新后的备注", "enabled": 0})
@@ -150,6 +164,9 @@ def test_update_watchlist():
     assert target["notes"] == "更新后的备注", f"备注应为 '更新后的备注'，实际 '{target['notes']}'"
     assert target["enabled"] == 0, f"enabled 应为 0，实际 {target['enabled']}"
     print("[OK] update watchlist")
+
+    # 清理测试数据
+    delete_watchlist("601318")
 
 
 def test_duplicate_watchlist_rejected():
@@ -313,6 +330,36 @@ def test_push_report_endpoint_rejects_invalid_id():
     data = resp.json()
     assert data["code"] == 1, f"不存在的报告应返回 code=1，实际 {data}"
     print(f"[OK] push report invalid id → code=1, msg={data['message']}")
+
+
+# ============================================================
+# 测试隔离性：验证测试不会残留数据到生产库
+# ============================================================
+
+def test_watchlist_tests_leave_no_residual():
+    """所有自选股测试完成后，不应在库中残留测试数据"""
+    from database import get_watchlist
+    items = get_watchlist()
+    polluted = [item["stock_code"] for item in items
+                if item["stock_code"] in ("600519", "000858", "601318")]
+    assert polluted == [], (
+        f"测试残留数据: {polluted}，"
+        "请检查 test_add_and_list_watchlist / test_update_watchlist 是否缺少清理"
+    )
+    print(f"[OK] 无测试残留 — watchlist 共 {len(items)} 条")
+
+
+def test_reports_tests_leave_no_residual():
+    """所有报告测试完成后，不应在库中残留测试数据"""
+    from database import get_stock_reports
+    rows, total = get_stock_reports(page=1, page_size=200)
+    polluted = [r for r in rows
+                if r["stock_code"].startswith("00000") or r["stock_name"].startswith("测试股")]
+    assert polluted == [], (
+        "测试残留报告: " + str([(r["stock_code"], r["stock_name"]) for r in polluted]) + ", "
+        "请检查 test_save_and_get_report / test_get_latest_report / test_get_reports_pagination 是否缺少清理"
+    )
+    print(f"[OK] 无测试残留 — 总共 {total} 条报告")
 
 
 # ═══════════════════════════════════════════════

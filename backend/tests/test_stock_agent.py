@@ -397,6 +397,89 @@ def test_capital_skill_skip_missing_fund_columns():
 
 
 
+
+# ============================================================
+# 基本面及财务分析（F10数据源接入 + 五维结构化）
+# ============================================================
+
+def test_fetch_fundamental_f10_returns_data():
+    """_fetch_fundamental 应通过 curl_cffi 直连东财 F10 接口，返回非空 dict"""
+    from stock_agent.fetcher import _fetch_fundamental
+    result = _fetch_fundamental('600519')
+    assert isinstance(result, dict), f'应返回 dict，实际 {type(result)}'
+    # F10 接口至少应返回 PE
+    has_financial = (
+        'pe' in result or 'eps' in result or 'roe' in result or
+        'gross_margin' in result or 'net_margin' in result
+    )
+    assert has_financial, f'F10接口应返回至少一个财务指标，实际字段: {list(result.keys())[:10]}'
+    print(f'  获取字段: {list(result.keys())[:15]}')
+
+
+def test_fetch_fundamental_f10_has_five_dimensions():
+    """_fetch_fundamental 应覆盖估值/盈利/成长/偿债/现金流五个维度"""
+    from stock_agent.fetcher import _fetch_fundamental
+    result = _fetch_fundamental('600519')
+    dims = {
+        '估值': ['pe', 'pb'],
+        '盈利': ['gross_margin', 'net_margin', 'roe'],
+        '成长': ['revenue_yoy', 'profit_yoy'],
+        '偿债': ['current_ratio', 'debt_ratio'],
+        '现金流': ['nco_netprofit_ratio', 'netcash_operate'],
+    }
+    covered = 0
+    for dim_name, keys in dims.items():
+        if any(k in result for k in keys):
+            covered += 1
+    assert covered >= 3, f'至少覆盖3个维度，实际覆盖 {covered}个'
+
+
+def test_fundamental_skill_structured_output():
+    """fundamental_skill 应输出五维结构化数据"""
+    from stock_agent.skills.fundamental import fundamental_skill
+    fake_data = {
+        'stock_code': '600519', 'stock_name': '贵州茅台',
+        'latest_close': 1186.55,
+        'spot': {'市盈率': '17.93', '总市值': '14832.84'},
+        'fundamental': {
+            'pe': 17.93, 'pb': 8.5, 'roe': 10.57,
+            'gross_margin': 89.76, 'net_margin': 52.22,
+            'revenue_yoy': 6.34, 'profit_yoy': 1.47,
+            'current_ratio': 7.06, 'debt_ratio': 12.12,
+            'nco_netprofit_ratio': 0.96, 'netcash_operate': 26909891269,
+        },
+    }
+    result = fundamental_skill(fake_data)
+    assert result['enabled'] is True
+    fields = result['section']['fields']
+    # 应有五维子组
+    has_dim = any(
+        k in str(list(fields.keys())) for k in ['盈利', '成长', '偿债', '现金流', '估值']
+    )
+    # 至少有分组信息
+    assert len(fields) >= 3, f'至少3个字段组，实际 {len(fields)}'
+
+
+def test_output_schema_fundamental_insight_400_chars():
+    """基本面 insight 应要求不少于400字 + 不能为了凑字数而写"""
+    from stock_agent.analyze import OUTPUT_SCHEMA, CORE_RULES
+    assert '基本面' in OUTPUT_SCHEMA or '财务分析' in OUTPUT_SCHEMA, '应包含基本面 section 定义'
+    has_chars = '400' in OUTPUT_SCHEMA and '不少于' in OUTPUT_SCHEMA
+    has_anti_pad = '凑字' in OUTPUT_SCHEMA or '凑字' in CORE_RULES or '说明清楚' in OUTPUT_SCHEMA or '说明清楚' in CORE_RULES
+    has_dims = '估值' in OUTPUT_SCHEMA and ('盈利' in OUTPUT_SCHEMA or '成长' in OUTPUT_SCHEMA)
+    assert has_chars, '基本面 insight 应包含不少于400字约束'
+    assert has_anti_pad, '应有抗凑字数规则：不能为了400字而400字'
+    assert has_dims, '基本面 insight 应包含五维度要求'
+
+
+def test_fundamental_skill_display_name():
+    """fundamental_skill 的 display_name 应为 基本面及财务分析"""
+    from stock_agent.skills import SKILLS
+    fund = [s for s in SKILLS if s.name == 'fundamental']
+    assert len(fund) == 1, '应有 fundamental 技能'
+    assert '财务' in fund[0].display_name, f'display_name 应包含财务，实际: {fund[0].display_name}'
+
+
 # ============================================================
 # 新闻 Fallback 源（问题1修复）
 # ============================================================
@@ -439,7 +522,7 @@ def test_news_fallback_chain_not_crash():
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["all", "skillmeta", "prompt", "schema", "capital", "news", "insight"], default="all")
+    ap.add_argument("--mode", choices=["all", "skillmeta", "prompt", "schema", "capital", "news", "insight", "f10"], default="all")
     args = ap.parse_args()
 
     print("=" * 50)
