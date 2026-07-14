@@ -41,7 +41,24 @@
       "Bash(python tests/_probe_stock_info_tech.py)",
       "Bash(python -c \"import os; t=os.getenv\\('IFIND_AUTH_TOKEN',''\\); print\\('token len:', len\\(t\\), 'prefix:', t[:20] if t else 'EMPTY'\\)\")",
       "Bash(python tests/_probe_summary.py)",
-      "Bash(python tests/_probe_financials.py)"
+      "Bash(python tests/_probe_financials.py)",
+      "Bash(python probe_shareholders.py)",
+      "Bash(python probe_shareholders2.py)",
+      "Bash(python -m pytest tests/test_models.py tests/test_fetchers.py tests/test_fetch_stock_data.py -v)",
+      "Bash(python probe_sh.py)",
+      "Bash(python probe_sh3.py)",
+      "Bash(python probe_sh_final.py)",
+      "Bash(python probe_kw.py)",
+      "Bash(python probe_performance.py)",
+      "Bash(python \"d:\\\\karensAgent\\\\.claude\\\\worktrees\\\\ifind-refactor\\\\backend\\\\tests\\\\probe_performance.py\")",
+      "Bash(python -c ' *)",
+      "Bash(python tests/probe_events_v1.py)",
+      "Bash(set PYTHONIOENCODING=utf-8)",
+      "Bash(python tests/probe_events_v2.py)",
+      "Bash(rm -rf stock_agent/fetchers/news_events/__pycache__)",
+      "Bash(python tests/_probe_search_news.py)",
+      "Bash(python tests/_probe_search_stocks.py)",
+      "Bash(python main.py)"
     ]
   }
 }
