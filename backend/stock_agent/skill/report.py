@@ -6,7 +6,7 @@ import asyncio
 import json
 import re
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from . import call_skill, extract_text, extract_raw
 
 
@@ -27,12 +27,60 @@ DIMENSIONS = [
     {"key": "notices",     "label": "公司公告",       "server": "news",  "tool": "search_notice",            "critical": False},
 ]
 
+# 港股维度定义（global_stock 服务，key 尽量与 A 股对齐以兼容前端维度选择）
+# ESG 事件类数据由 global_stock_events 覆盖，故并入 events 维度
+HK_DIMENSIONS = [
+    {"key": "summary",     "label": "基本信息",       "server": "global_stock", "tool": "global_stock_profile",   "critical": True,
+     "query_tpl": "港股{code}的公司全称、公司中文名称、所属行业、上市日期、总股本、主营业务"},
+    {"key": "quotes",      "label": "行情表现",       "server": "global_stock", "tool": "global_stock_quotes",    "critical": True,
+     "query_tpl": "港股{code}的最新收盘价、涨跌幅、总市值、换手率、成交额"},
+    {"key": "performance", "label": "近期行情走势",    "server": "global_stock", "tool": "global_stock_quotes",    "critical": False,
+     "query_tpl": "港股{code}的近1月、近3月、近6月涨跌幅和年涨跌幅"},
+    {"key": "financials",  "label": "财务数据",       "server": "global_stock", "tool": "global_stock_financial", "critical": False,
+     "query_tpl": "港股{code}的最新营业收入、净利润、毛利率、资产负债率、每股收益"},
+    {"key": "valuation",   "label": "估值水平",       "server": "global_stock", "tool": "global_stock_financial", "critical": False,
+     "query_tpl": "港股{code}的市盈率PE、市净率PB、市销率PS、盈利预测"},
+    {"key": "shareholders","label": "股东结构",       "server": "global_stock", "tool": "global_stock_profile",   "critical": False,
+     "query_tpl": "港股{code}的主要股东及持股比例、机构持股"},
+    {"key": "risk",        "label": "风险评估",       "server": "global_stock", "tool": "global_stock_quotes",    "critical": False,
+     "query_tpl": "港股{code}的贝塔系数、年化波动率、夏普比率、最大回撤"},
+    {"key": "events",      "label": "重大事件与ESG",   "server": "global_stock", "tool": "global_stock_events",    "critical": False,
+     "query_tpl": "港股{code}的IPO发行价、募资金额、分红、回购、ESG评级"},
+    {"key": "news",        "label": "近期新闻",       "server": "news",  "tool": "search_news",   "critical": False,
+     "query_tpl": "{code} 近期新闻"},
+    {"key": "notices",     "label": "公司公告",       "server": "news",  "tool": "search_notice", "critical": False,
+     "query_tpl": "{code} 近期公告"},
+]
+
 # 限速间隔（秒）：免费版 2 QPS，串行 10 维度约 20-30 秒
 RATE_LIMIT_INTERVAL = 0.6
 
 
+def _dimensions_for(stock_code: str) -> list[dict]:
+    """按市场选择维度表：港股走 global_stock，其余走 A 股 stock"""
+    return HK_DIMENSIONS if stock_code.endswith(".HK") else DIMENSIONS
+
+
+def _news_time_params(dim_key: str) -> dict:
+    """news 服务必填的时间范围参数：新闻查近 90 天，公告查近 180 天"""
+    today = datetime.now()
+    days = 180 if dim_key == "notices" else 90
+    return {
+        "time_start": (today - timedelta(days=days)).strftime("%Y-%m-%d"),
+        "time_end": today.strftime("%Y-%m-%d"),
+        "size": 5 if dim_key == "notices" else 8,
+    }
+
+
 def _build_params(dim: dict, stock_code: str) -> dict:
     """根据维度配置和股票代码构建 SKILL 调用参数"""
+    # 带查询模板的维度（港股）直接格式化
+    if "query_tpl" in dim:
+        params = {"query": dim["query_tpl"].format(code=stock_code)}
+        if dim["server"] == "news":
+            params.update(_news_time_params(dim["key"]))
+        return params
+
     key = dim["key"]
     tool = dim["tool"]
 
@@ -79,7 +127,24 @@ def _build_params(dim: dict, stock_code: str) -> dict:
         "notices": f"{stock_code} 近期公告",
     }
 
-    return {"query": queries.get(key, f"{stock_code}")}
+    params = {"query": queries.get(key, f"{stock_code}")}
+    if dim["server"] == "news":
+        params.update(_news_time_params(key))
+    return params
+
+
+def normalize_stock_code(stock_code: str) -> str:
+    """归一化股票代码：港股各种写法统一为 xxxx.HK，其余原样返回
+
+    HK2513 / hk2513 / 2513.hk → 2513.HK；600519 等 A 股代码不变。
+    """
+    s = stock_code.strip()
+    m = re.fullmatch(r"[Hh][Kk](\d{1,5})", s)
+    if m:
+        return f"{m.group(1)}.HK"
+    if re.fullmatch(r"\d{1,5}\.[Hh][Kk]", s):
+        return s.upper()
+    return s
 
 
 def _market_suffix(stock_code: str) -> str:
@@ -304,6 +369,38 @@ def _raw_to_prose(raw, dim_key: str = '') -> str:
 # 辅助函数：从 summary 维度提取公司全称
 # ═══════════════════════════════════════════
 
+def _name_from_pipe_table(text: str) -> str | None:
+    """从 Markdown 管道表格中提取公司名（港股 global_stock_profile 返回表格应答）
+
+    优先取"公司中文名称/公司全称"列，其次"证券简称"列。
+    """
+    lines = [ln.strip() for ln in text.splitlines()]
+    fallback = None
+    for i, ln in enumerate(lines):
+        if not ln.startswith("|"):
+            continue
+        headers = [c.strip() for c in ln.strip("|").split("|")]
+        if not any(h in ("公司中文名称", "公司全称", "证券简称") for h in headers):
+            continue
+        # 表头行之后跳过分隔行，取第一条数据行
+        for data_ln in lines[i + 1:]:
+            if not data_ln.startswith("|"):
+                break
+            cells = [c.strip() for c in data_ln.strip("|").split("|")]
+            if all(c.replace("-", "").replace(":", "") == "" for c in cells):
+                continue  # |---|---| 分隔行
+            row = dict(zip(headers, cells))
+            for col in ("公司中文名称", "公司全称"):
+                v = row.get(col, "")
+                if v and len(v) >= 2:
+                    return v
+            v = row.get("证券简称", "")
+            if v and len(v) >= 2 and fallback is None:
+                fallback = v
+            break
+    return fallback
+
+
 def _extract_stock_name(raw, stock_code: str) -> str:
     """从 summary 维度（基本信息与估值）的 raw 数据中提取公司全称
 
@@ -331,6 +428,11 @@ def _extract_stock_name(raw, stock_code: str) -> str:
             if name and len(name) >= 2 and name != stock_code:
                 return name
 
+    # 正则未命中 → 尝试从表格应答提取（港股 profile 为表格格式）
+    name = _name_from_pipe_table(text)
+    if name and name != stock_code:
+        return name
+
     return stock_code
 
 
@@ -354,8 +456,12 @@ async def generate_report_stream(stock_code: str, dimensions: list[str] | None =
     has_critical_failure = False
     loop = asyncio.get_running_loop()
 
+    # 归一化代码并按市场选择维度表（港股走 global_stock）
+    stock_code = normalize_stock_code(stock_code)
+    all_dims = _dimensions_for(stock_code)
+
     # 如果指定了维度，只处理选中的维度
-    active_dims = [d for d in DIMENSIONS if dimensions is None or d["key"] in dimensions]
+    active_dims = [d for d in all_dims if dimensions is None or d["key"] in dimensions]
     total = len(active_dims)
 
     yield _format_sse("start", {"stock_code": stock_code, "total": total})
@@ -432,6 +538,7 @@ async def generate_report_stream(stock_code: str, dimensions: list[str] | None =
     yield _format_sse("complete", {
         "report": full_markdown,
         "sections": sections,
+        "stock_code": stock_code,
         "stock_name": stock_name,
         "has_critical_failure": has_critical_failure,
     })
@@ -451,14 +558,20 @@ def generate_report_sync(stock_code: str, dimensions: list[str] | None = None) -
         dimensions: 可选，指定要采集的维度 key 列表；传 None 则采集全部 10 个维度
 
     Returns:
-        {"markdown": str, "stock_name": str, "sections": {dim_key: prose, ...}}
+        {"markdown": str, "stock_code": str, "stock_name": str, "sections": {dim_key: prose, ...}}
+
+        stock_code 为归一化后的代码（如 HK2513 → 2513.HK）
     """
     parts = []
     raws = {}
     has_critical_failure = False
 
+    # 归一化代码并按市场选择维度表（港股走 global_stock）
+    stock_code = normalize_stock_code(stock_code)
+    all_dims = _dimensions_for(stock_code)
+
     # 如果指定了维度，只处理选中的维度
-    active_dims = [d for d in DIMENSIONS if dimensions is None or d["key"] in dimensions]
+    active_dims = [d for d in all_dims if dimensions is None or d["key"] in dimensions]
 
     for i, dim in enumerate(active_dims):
         try:
@@ -500,6 +613,7 @@ def generate_report_sync(stock_code: str, dimensions: list[str] | None = None) -
 
     return {
         "markdown": header + "\n\n".join(parts),
+        "stock_code": stock_code,
         "stock_name": stock_name,
         "sections": sections,
     }

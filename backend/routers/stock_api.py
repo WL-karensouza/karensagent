@@ -88,6 +88,8 @@ def _run_analysis(task_id: str, stock_code: str):
         # Step 1: SKILL 采集 10 维度数据 → Markdown 报告
         data_result = generate_report_sync(stock_code)
         data_md = data_result["markdown"]
+        # 使用归一化后的代码入库（如 HK2513 → 2513.HK）
+        stock_code = data_result.get("stock_code", stock_code)
         stock_name = data_result.get("stock_name", stock_code)
 
         # Step 2: DeepSeek 分析

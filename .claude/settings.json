@@ -58,7 +58,29 @@
       "Bash(rm -rf stock_agent/fetchers/news_events/__pycache__)",
       "Bash(python tests/_probe_search_news.py)",
       "Bash(python tests/_probe_search_stocks.py)",
-      "Bash(python main.py)"
+      "Bash(python main.py)",
+      "Bash(python -m pytest tests/test_models.py -q)",
+      "Bash(python -m pytest tests/test_stock_api.py::test_watchlist_crud_flow -q)",
+      "Bash(python -m pytest tests/test_stock_api.py::test_watchlist_crud_flow -q --capture=no)",
+      "Bash(python -m pytest tests/ -q --capture=no)",
+      "Bash(python -m pytest tests/test_fetchers.py -q --capture=no --tb=short)",
+      "Bash(python -m pytest tests/test_stock_api_integration.py::test_analyze_accepts_new_data_dict -q --capture=no --tb=line)",
+      "Bash(python -m pytest tests/test_analyze.py tests/test_core.py tests/test_ifind_client.py tests/test_ifind_client_unit.py tests/test_models.py tests/test_render.py -q --capture=no --tb=no)",
+      "Bash(python -m pytest tests/test_analyze.py tests/test_core.py tests/test_ifind_client.py tests/test_ifind_client_unit.py tests/test_models.py tests/test_render.py --capture=no --tb=no)",
+      "Bash(python -m pytest tests/test_analyze.py tests/test_core.py tests/test_ifind_client.py tests/test_ifind_client_unit.py tests/test_models.py tests/test_render.py -q --capture=no --tb=no -p no:cacheprovider)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(python -m pytest tests/test_analyze.py tests/test_core.py tests/test_ifind_client.py tests/test_ifind_client_unit.py tests/test_models.py tests/test_render.py -q --capture=no --tb=no --junitxml=/tmp/baseline.xml)",
+      "Bash(python -m pytest tests/test_analyze.py tests/test_core.py tests/test_ifind_client.py tests/test_ifind_client_unit.py tests/test_models.py tests/test_render.py -q --capture=no --tb=no --junitxml=_baseline.xml)",
+      "Bash(rm -f _baseline.xml)",
+      "Bash(python -m pytest tests/test_ifind_client_unit.py::test_extract_raw_text_markdown tests/test_models.py::test_market_data_model tests/test_ifind_client.py::test_post_verify_true -q --capture=no --tb=line)",
+      "Bash(npm test *)",
+      "Bash(npm run *)",
+      "Bash(git commit *)",
+      "Bash(python -m pytest tests/test_hk_stock_support.py --capture=no -q)",
+      "Bash(python -m pytest tests/test_hk_stock_support.py::test_extract_text_flags_out_of_scope --capture=no -q)",
+      "Bash(python -m pytest tests/test_hk_stock_support.py::test_hk_stock_name_extracted_from_profile_table --capture=no -q)",
+      "Bash(python -m pytest tests/ --capture=no -q --deselect tests/test_stock_api.py::test_push_report_endpoint_accepts_valid_id)",
+      "Bash(python -m pytest tests/test_hk_stock_support.py::test_news_dimensions_carry_time_range --capture=no -q)"
     ]
   }
 }

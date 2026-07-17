@@ -80,7 +80,11 @@ def extract_text(result: dict) -> str:
     # 新闻/公告类：data 是 dict，含 "data" 字段（JSON 数组字符串）
     if isinstance(inner_data, dict):
         if "answer" in inner_data:
-            return inner_data["answer"]
+            answer = inner_data["answer"]
+            # 数据范围外应答（如查港股走了 A 股服务）→ 标记为无数据
+            if isinstance(answer, str) and "不属于" in answer and "数据范围" in answer:
+                return f"[无数据] {answer}"
+            return answer
         if "data" in inner_data:
             news_data = inner_data["data"]
             if isinstance(news_data, str):
