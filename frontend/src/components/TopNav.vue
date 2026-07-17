@@ -147,7 +147,7 @@ function goSettings() {
   position: fixed;
   top: 0; left: 0; right: 0;
   z-index: 100;
-  background: var(--bg-card);
+  background: var(--bg-page);
   border-bottom: 1px solid var(--border-color);
 }
 

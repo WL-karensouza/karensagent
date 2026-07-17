@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Dashboard — 精密纸媒交易台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Serif+SC:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   DASHBOARD 方案 B — 精密纸媒交易台
+   方向：高端金融印刷品 + 实体交易台精密感
+   记忆点：数据像印在厚纸上的油墨，按钮像实体按键
+   ============================================================ */
+
+:root {
+  /* 纯白极简 */
+  --paper-bg:       #ffffff;
+  --paper-card:     #ffffff;
+  --paper-muted:    #f5f5f4;
+  --ink-primary:    #1a1816;
+  --ink-secondary:  #6b6560;
+  --ink-tertiary:   #9a948d;
+  --ink-disabled:   #c4beb6;
+  --accent:         #b45309;
+  --accent-hover:   #92400e;
+  --accent-soft:    #fef3c7;
+  --accent-ink:     #78350f;
+  --green:          #166534;
+  --green-soft:     #dcfce7;
+  --red:            #991b1b;
+  --red-soft:       #fee2e2;
+  --border:         #e5e5e5;
+  --border-light:   var(--border-light);
+  --shadow-sm:      0 1px 2px rgba(26,24,22,0.04);
+  --shadow-md:      0 4px 12px rgba(26,24,22,0.06);
+  --shadow-btn:     inset 0 1px 0 rgba(255,255,255,0.25), 0 1px 2px rgba(26,24,22,0.08);
+  --shadow-btn-active: inset 0 1px 2px rgba(26,24,22,0.15);
+  --radius-sm:      3px;
+  --radius-md:      5px;
+  --radius-lg:      8px;
+  --font-display:   'Bricolage Grotesque', 'Noto Sans SC', 'PingFang SC', sans-serif;
+  --font-serif:     'Noto Serif SC', 'STSong', 'SimSun', serif;
+  --font-mono:      'JetBrains Mono', 'SF Mono', 'Cascadia Code', monospace;
+  --ease-out:       cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+
+body{
+  font-family:var(--font-display);
+  background:var(--paper-bg);
+  color:var(--ink-primary);
+  line-height:1.55;
+  min-height:100vh;
+}
+
+.app-shell{
+  position:relative;
+  z-index:1;
+  max-width:1400px;
+  margin:0 auto;
+  padding:32px 40px 60px;
+}
+
+/* ---- 顶部导航（模拟现有 TopNav） ---- */
+.topnav{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding-bottom:20px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:28px;
+}
+.topnav-brand{
+  display:flex;align-items:center;gap:10px;
+  font-weight:700;font-size:1.05rem;letter-spacing:-0.01em;
+}
+.brand-mark{
+  width:28px;height:28px;background:var(--ink-primary);color:var(--paper-card);
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--font-serif);font-size:14px;font-weight:900;
+  border-radius:var(--radius-sm);
+}
+.topnav-links{display:flex;gap:28px;list-style:none}
+.topnav-links a{
+  text-decoration:none;color:var(--ink-secondary);
+  font-size:0.85rem;font-weight:500;letter-spacing:0.01em;
+  padding:4px 0;border-bottom:2px solid transparent;
+  transition:color .15s ease,border-color .15s ease;
+}
+.topnav-links a.active,
+.topnav-links a:hover{color:var(--ink-primary);border-bottom-color:var(--accent)}
+
+/* ---- 子导航 ---- */
+.subnav{
+  display:flex;gap:6px;margin-bottom:32px;
+}
+.subnav a{
+  text-decoration:none;color:var(--ink-secondary);
+  font-size:0.82rem;font-weight:500;
+  padding:6px 14px;border-radius:var(--radius-md);
+  transition:all .15s ease;
+}
+.subnav a:hover{background:var(--paper-muted);color:var(--ink-primary)}
+.subnav a.active{background:var(--ink-primary);color:var(--paper-card)}
+
+/* ============================================================
+   头版搜索区
+   ============================================================ */
+.masthead{
+  display:grid;
+  grid-template-columns:1fr auto;
+  gap:40px;
+  align-items:end;
+  padding-bottom:28px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:28px;
+}
+.masthead-title h1{
+  font-family:var(--font-serif);
+  font-size:2.6rem;font-weight:900;letter-spacing:-0.03em;
+  line-height:1.1;margin-bottom:8px;
+}
+.masthead-title p{
+  color:var(--ink-secondary);font-size:0.9rem;
+  font-weight:500;letter-spacing:0.02em;
+}
+.masthead-title .issue-tag{
+  display:inline-block;
+  font-family:var(--font-mono);font-size:0.7rem;
+  background:var(--ink-primary);color:var(--paper-card);
+  padding:3px 8px;border-radius:var(--radius-sm);
+  margin-bottom:12px;letter-spacing:0.08em;
+}
+
+/* 搜索框 */
+.search-desk{
+  display:flex;align-items:center;gap:12px;
+  background:var(--paper-card);
+  border:1px solid var(--border);
+  border-radius:var(--radius-md);
+  padding:10px 12px;
+  box-shadow:var(--shadow-sm);
+  min-width:360px;
+  transition:border-color .2s ease,box-shadow .2s ease;
+}
+.search-desk:focus-within{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(180,83,9,0.08),var(--shadow-sm);
+}
+.search-desk.running{background:var(--paper-muted)}
+.search-desk .search-label{
+  font-family:var(--font-mono);font-size:0.75rem;
+  color:var(--ink-tertiary);white-space:nowrap;
+  letter-spacing:0.05em;
+}
+.search-desk input{
+  flex:1;border:none;outline:none;background:transparent;
+  font-family:var(--font-mono);font-size:1rem;color:var(--ink-primary);
+}
+.search-desk input::placeholder{color:var(--ink-tertiary)}
+.search-desk input:disabled{color:var(--ink-disabled)}
+
+/* 实体按键 */
+.btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:10px 20px;border-radius:var(--radius-sm);
+  font-family:var(--font-display);font-size:0.85rem;font-weight:600;
+  border:1px solid transparent;cursor:pointer;
+  transition:all .12s ease;
+}
+.btn-primary{
+  background:var(--accent);color:#fff;
+  box-shadow:var(--shadow-btn);
+}
+.btn-primary:hover{background:var(--accent-hover);transform:translateY(-1px)}
+.btn-primary:active{transform:translateY(0);box-shadow:var(--shadow-btn-active)}
+.btn-primary:disabled{background:var(--paper-muted);color:var(--ink-tertiary);border-color:var(--border);cursor:not-allowed;transform:none;box-shadow:none}
+.btn-secondary{
+  background:var(--paper-card);color:var(--ink-primary);
+  border:1px solid var(--border);
+  box-shadow:var(--shadow-btn);
+}
+.btn-secondary:hover{background:var(--paper-muted)}
+.btn-report{
+  background:var(--green);color:#fff;box-shadow:var(--shadow-btn);
+}
+.btn-report:hover{background:#14532d;transform:translateY(-1px)}
+
+/* 状态演示 */
+.state-demo{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  margin-top:14px;font-size:0.8rem;color:var(--ink-tertiary);
+}
+.state-demo button{
+  padding:5px 12px;border-radius:20px;border:1px solid var(--border);
+  background:var(--paper-card);color:var(--ink-secondary);
+  font-family:inherit;font-size:0.78rem;cursor:pointer;
+  transition:all .15s ease;
+}
+.state-demo button:hover{background:var(--paper-muted)}
+.state-demo button.active{background:var(--ink-primary);color:var(--paper-card);border-color:var(--ink-primary)}
+
+/* 进度文字 */
+.progress-line{
+  margin-top:10px;font-family:var(--font-mono);font-size:0.82rem;
+  color:var(--ink-secondary);min-height:22px;
+  display:flex;align-items:center;gap:10px;
+}
+.progress-line .spinner{
+  width:14px;height:14px;border:2px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 警告条 */
+.warning-banner{
+  display:none;align-items:center;gap:10px;
+  margin-top:14px;padding:10px 14px;
+  background:#fffbeb;border:1px dashed #f59e0b;
+  border-radius:var(--radius-sm);font-size:0.82rem;color:#92400e;
+}
+.warning-banner.visible{display:flex}
+
+/* ============================================================
+   三栏主布局
+   ============================================================ */
+.desk-grid{
+  display:grid;
+  grid-template-columns:180px 1fr 280px;
+  gap:28px;
+  align-items:start;
+}
+
+/* ---- 左侧维度目录 ---- */
+.dimension-toc{}
+.dimension-toc h3{
+  font-size:0.7rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:0.12em;
+  color:var(--ink-tertiary);margin-bottom:14px;
+}
+.toc-list{list-style:none;display:flex;flex-direction:column;gap:4px}
+.toc-item{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;border-radius:var(--radius-md);
+  cursor:pointer;transition:all .15s ease;
+  border:1px solid transparent;
+}
+.toc-item:hover{background:var(--paper-muted)}
+.toc-item.active{
+  background:var(--paper-card);border-color:var(--border);
+  box-shadow:var(--shadow-sm);
+}
+.toc-item.missing{opacity:.55}
+.toc-num{
+  font-family:var(--font-mono);font-size:0.7rem;color:var(--ink-tertiary);
+  min-width:18px;
+}
+.toc-item.active .toc-num{color:var(--accent)}
+.toc-label{font-size:0.88rem;font-weight:500;color:var(--ink-primary)}
+.toc-status{
+  width:5px;height:5px;border-radius:50%;background:var(--green);margin-left:auto;
+}
+.toc-item.missing .toc-status{background:var(--ink-tertiary)}
+
+/* ---- 中间维度大卡 ---- */
+.dimension-stage{
+  background:var(--paper-card);
+  border:1px solid var(--border);
+  border-radius:var(--radius-lg);
+  min-height:520px;
+  box-shadow:var(--shadow-sm);
+  overflow:hidden;
+}
+.stage-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:22px 26px;border-bottom:1px solid var(--border-light);
+}
+.stage-title h2{
+  font-family:var(--font-serif);font-size:1.4rem;font-weight:700;
+  letter-spacing:-0.01em;
+}
+.stage-title .stock-sub{
+  font-family:var(--font-mono);font-size:0.78rem;color:var(--ink-tertiary);
+  margin-top:2px;
+}
+.stage-badge{
+  font-family:var(--font-mono);font-size:0.68rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:0.06em;
+  padding:4px 10px;border-radius:var(--radius-sm);
+}
+.badge-ok{background:var(--green-soft);color:var(--green)}
+.badge-neutral{background:var(--paper-muted);color:var(--ink-secondary)}
+.badge-missing{background:var(--red-soft);color:var(--red)}
+
+.stage-body{padding:26px}
+
+/* 数据网格 */
+.metric-grid{
+  display:grid;
+  grid-template-columns:repeat(3, 1fr);
+  gap:1px;
+  background:var(--border-light);
+  border:1px solid var(--border-light);
+  border-radius:var(--radius-sm);
+  overflow:hidden;
+}
+.metric-cell{
+  background:var(--paper-card);padding:18px;
+  transition:background .15s ease;
+}
+.metric-cell:hover{background:var(--paper-muted)}
+.metric-label{
+  font-family:var(--font-mono);font-size:0.68rem;
+  text-transform:uppercase;letter-spacing:0.08em;
+  color:var(--ink-tertiary);margin-bottom:6px;
+}
+.metric-value{
+  font-family:var(--font-mono);font-size:1.5rem;font-weight:700;
+  color:var(--ink-primary);letter-spacing:-0.02em;
+}
+.metric-value.up{color:var(--green)}
+.metric-value.down{color:var(--red)}
+.metric-unit{font-size:0.85rem;font-weight:500;color:var(--ink-tertiary);margin-left:2px}
+.metric-sub{
+  font-size:0.78rem;color:var(--ink-secondary);margin-top:4px;
+}
+
+/* 财务分区 */
+.finance-grid{
+  display:grid;grid-template-columns:repeat(2, 1fr);gap:20px;
+}
+.finance-block h4{
+  font-size:0.75rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:0.08em;color:var(--ink-secondary);
+  padding-bottom:8px;border-bottom:1px solid var(--border);
+  margin-bottom:10px;
+}
+.finance-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:7px 0;font-size:0.85rem;
+  border-bottom:1px dashed var(--border-light);
+}
+.finance-row:last-child{border-bottom:none}
+.finance-row .label{color:var(--ink-tertiary)}
+.finance-row .value{font-family:var(--font-mono);font-weight:600}
+
+/* 新闻列表 */
+.news-list{list-style:none}
+.news-item{
+  display:flex;justify-content:space-between;align-items:baseline;
+  padding:14px 0;border-bottom:1px solid var(--border-light);
+  transition:background .15s ease;
+}
+.news-item:hover{background:var(--paper-muted);margin:0 -12px;padding:14px 12px;border-radius:var(--radius-sm)}
+.news-title{font-size:0.92rem;font-weight:500;color:var(--ink-primary);line-height:1.5}
+.news-time{font-family:var(--font-mono);font-size:0.72rem;color:var(--ink-tertiary);white-space:nowrap;margin-left:16px}
+
+/* 缺失状态 */
+.missing-state{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:80px 40px;text-align:center;
+}
+.missing-stamp{
+  font-family:var(--font-mono);font-size:0.75rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:0.15em;
+  color:var(--red);border:2px dashed var(--red);
+  padding:8px 16px;border-radius:var(--radius-sm);
+  transform:rotate(-3deg);opacity:.8;
+  margin-bottom:16px;
+}
+.missing-state h4{font-size:1rem;font-weight:600;color:var(--ink-secondary);margin-bottom:6px}
+.missing-state p{font-size:0.82rem;color:var(--ink-tertiary);max-width:300px}
+
+/* ---- 右侧边栏 ---- */
+.side-panel{display:flex;flex-direction:column;gap:24px}
+.side-card{
+  background:var(--paper-card);border:1px solid var(--border);
+  border-radius:var(--radius-lg);padding:20px;box-shadow:var(--shadow-sm);
+}
+.side-card h3{
+  font-size:0.85rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:0.08em;color:var(--ink-secondary);
+  margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border-light);
+}
+
+/* 自选股轮播 */
+.watch-carousel{position:relative;margin:-4px -20px 0}
+.watch-carousel-window{
+  overflow:hidden;
+  padding:0 28px; /* 两侧露边宽度 */
+  cursor:grab;
+}
+.watch-carousel-window:active{cursor:grabbing}
+.watch-track{
+  display:flex;
+  transition:transform .4s var(--ease-out);
+  will-change:transform;
+}
+.watch-slide{
+  flex:0 0 calc(100% - 8px); /* 卡片宽度 = 窗口宽 - 两侧露边补偿 */
+  margin:0 4px;
+  padding:18px 16px;
+  background:var(--paper-card);
+  border:1px solid var(--border);
+  border-radius:var(--radius-md);
+  box-shadow:var(--shadow-sm);
+  transform:scale(.92);
+  opacity:.55;
+  transition:transform .35s var(--ease-out),opacity .35s ease;
+  user-select:none;
+}
+.watch-slide.active{
+  transform:scale(1);
+  opacity:1;
+  border-color:var(--accent);
+  box-shadow:0 0 0 1px var(--accent),var(--shadow-md);
+}
+.watch-slide-code{
+  font-family:var(--font-mono);font-size:0.78rem;font-weight:700;color:var(--ink-tertiary);
+  margin-bottom:4px;
+}
+.watch-slide-name{
+  font-family:var(--font-serif);font-size:1.15rem;font-weight:700;color:var(--ink-primary);
+  margin-bottom:14px;
+}
+.watch-slide-price{
+  font-family:var(--font-mono);font-size:1.4rem;font-weight:700;
+  margin-bottom:4px;
+}
+.watch-slide-price.up{color:var(--green)}
+.watch-slide-price.down{color:var(--red)}
+.watch-slide-change{
+  display:inline-block;font-family:var(--font-mono);font-size:0.75rem;font-weight:700;
+  padding:3px 8px;border-radius:var(--radius-sm);
+}
+.watch-slide-change.up{background:var(--green-soft);color:var(--green)}
+.watch-slide-change.down{background:var(--red-soft);color:var(--red)}
+.watch-slide-btn{
+  width:100%;margin-top:14px;padding:8px 0;
+  background:var(--ink-primary);color:#fff;border:none;border-radius:var(--radius-sm);
+  font-family:var(--font-display);font-size:0.78rem;font-weight:600;cursor:pointer;
+  transition:background .15s ease;
+}
+.watch-slide-btn:hover{background:var(--accent)}
+.watch-nav{
+  display:flex;align-items:center;justify-content:center;gap:16px;
+  margin-top:14px;
+}
+.watch-nav-btn{
+  width:28px;height:28px;border-radius:50%;
+  border:1px solid var(--border);background:var(--paper-card);color:var(--ink-secondary);
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  transition:all .15s ease;
+}
+.watch-nav-btn:hover{border-color:var(--accent);color:var(--accent)}
+.watch-nav-btn:disabled{opacity:.35;cursor:not-allowed}
+.watch-dots{display:flex;gap:5px}
+.watch-dot{
+  width:5px;height:5px;border-radius:50%;background:var(--border);
+  cursor:pointer;transition:background .15s ease;
+}
+.watch-dot.active{background:var(--accent)}
+
+.side-link{
+  display:block;text-align:center;margin-top:14px;
+  font-size:0.8rem;font-weight:600;color:var(--accent);text-decoration:none;
+}
+.side-link:hover{color:var(--accent-hover)}
+
+/* 最近报告 */
+.report-item{
+  display:grid;grid-template-columns:56px 1fr auto;
+  gap:10px;align-items:center;
+  padding:12px 0;border-bottom:1px dashed var(--border-light);
+}
+.report-item:last-child{border-bottom:none}
+.report-score{
+  font-family:var(--font-mono);font-size:1.3rem;font-weight:700;
+  text-align:center;
+}
+.report-score.bullish{color:var(--green)}
+.report-score.bearish{color:var(--red)}
+.report-score.neutral{color:var(--ink-secondary)}
+.report-meta .code{font-family:var(--font-mono);font-size:0.8rem;font-weight:600;color:var(--ink-primary)}
+.report-meta .time{font-size:0.7rem;color:var(--ink-tertiary)}
+.report-verdict{
+  font-size:0.68rem;font-weight:700;text-align:center;
+  padding:3px 8px;border-radius:var(--radius-sm);
+}
+.report-verdict.bullish{background:var(--green-soft);color:var(--green)}
+.report-verdict.bearish{background:var(--red-soft);color:var(--red)}
+.report-verdict.neutral{background:var(--paper-muted);color:var(--ink-secondary)}
+
+/* 维度切换动画 */
+.stage-body{animation:fadeIn .35s var(--ease-out)}
+@keyframes fadeIn{from{opacity:0;transform:translateX(8px)}to{opacity:1;transform:translateX(0)}}
+
+/* ---- 底部自选股区域（极简报刊风格）---- */
+.watchlist-bottom{
+  margin-top:28px;
+  padding:90px 0;
+  border-top:1px solid var(--border);
+}
+.watchlist-bottom-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:40px;padding:0 4px;
+}
+.watchlist-bottom-header h3{
+  font-size:0.85rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:0.08em;
+  color:var(--ink-secondary);
+}
+
+/* 轮播视窗 */
+.watchlist-carousel-window{
+  overflow:hidden;position:relative;
+}
+.watchlist-track{
+  display:flex;
+  transition:transform .45s var(--ease-out);
+  will-change:transform;
+}
+
+/* 单栏 — 无卡片、无阴影，纯留白+分割线 */
+.watchlist-col{
+  flex:0 0 calc(100% / 3);
+  padding:30px 50px 42px;position:relative;
+  display:flex;flex-direction:column;
+}
+.watchlist-col+.watchlist-col::before{
+  content:'';position:absolute;left:0;top:8px;bottom:8px;
+  width:1px;background:#e5e7eb;
+}
+.watchlist-col:empty{min-height:1px}
+
+.watchlist-code{
+  font-family:var(--font-mono);font-size:0.8rem;font-weight:600;
+  color:var(--ink-tertiary);letter-spacing:0.06em;
+}
+.watchlist-name{
+  font-family:var(--font-serif);font-size:1.65rem;font-weight:700;
+  color:var(--ink-primary);line-height:1.3;
+  margin-top:15px;margin-bottom:84px;
+}
+.watchlist-price{
+  font-family:var(--font-mono);font-size:2rem;font-weight:700;
+  margin-bottom:9px;
+}
+.watchlist-price.up{color:var(--green)}
+.watchlist-price.down{color:var(--red)}
+.watchlist-change{
+  display:inline-block;font-family:var(--font-mono);font-size:0.85rem;font-weight:600;
+  padding:5px 12px;border-radius:var(--radius-sm);
+  margin-bottom:72px;align-self:flex-start;
+}
+.watchlist-change.up{background:var(--green-soft);color:var(--green)}
+.watchlist-change.down{background:var(--red-soft);color:var(--red)}
+
+.watchlist-analyze-btn{
+  width:100%;padding:20px 0;
+  background:#f3f4f6;color:var(--ink-secondary);
+  border:none;border-radius:var(--radius-sm);
+  font-family:var(--font-display);font-size:0.85rem;font-weight:500;cursor:pointer;
+  transition:background .15s ease,color .15s ease;
+  margin-top:auto;
+}
+.watchlist-analyze-btn:hover{background:#e5e7eb;color:var(--ink-primary)}
+
+/* 极简导航控件 */
+.watchlist-nav{
+  display:flex;align-items:center;justify-content:center;gap:18px;
+  margin-top:48px;
+}
+.watchlist-nav.hidden{display:none}
+.watchlist-arrow{
+  width:30px;height:30px;border-radius:10px;
+  border:1px solid #1a1816;background:transparent;
+  color:var(--ink-primary);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;font-size:14px;line-height:1;
+  transition:transform .2s var(--ease-out);padding:0;
+}
+.watchlist-arrow span{
+  display:flex;align-items:center;justify-content:center;
+  transition:transform .2s var(--ease-out);
+}
+.watchlist-arrow:hover{
+  transform:scale(1.13);
+  border-radius:12px;
+}
+.watchlist-arrow:hover span{
+  transform:scale(0.885);
+}
+.watchlist-arrow:disabled{opacity:.28;cursor:not-allowed;transform:none !important}
+.watchlist-arrow:disabled:hover span{transform:none !important}
+.watchlist-dots{display:flex;align-items:center;gap:10px}
+.watchlist-dot{
+  width:6px;height:6px;border-radius:50%;
+  background:#d1d5db;cursor:pointer;
+  transition:background .2s ease;
+}
+.watchlist-dot.active{background:#1a1816}
+
+/* ---- 最近分析报告区域（书刊杂志风格）---- */
+.reports-section{
+  background:#fff;padding:110px 0;
+  border-top:1px solid var(--border);
+}
+.reports-container{
+  max-width:760px;margin:0 auto;padding:0 24px;
+}
+.reports-title{
+  font-family:var(--font-serif);font-size:2.6rem;font-weight:500;
+  color:#111;text-align:center;
+  margin-bottom:72px;letter-spacing:-0.02em;
+}
+.reports-steps{display:flex;flex-direction:column}
+
+.reports-step{
+  display:flex;align-items:flex-start;gap:0;
+  padding:52px 0;
+  border-bottom:1px solid var(--border-light);
+}
+.reports-step:first-child{border-top:1px solid var(--border-light)}
+.reports-step:last-child{border-bottom:none}
+
+.reports-step-left{
+  width:38%;flex-shrink:0;
+  display:flex;align-items:flex-start;gap:12px;
+  padding-right:28px;
+}
+.reports-step-icon{
+  width:22px;height:22px;flex-shrink:0;margin-top:2px;
+}
+.reports-step-title{
+  font-family:var(--font-serif);font-size:1.15rem;font-weight:600;
+  color:#111;line-height:1.5;
+}
+
+.reports-step-desc{
+  width:62%;font-family:var(--font-display);font-size:0.93rem;font-weight:400;
+  color:#666;line-height:1.65;
+}
+
+/* 响应式：窄屏时单栏堆叠 */
+@media(max-width:820px){
+  .reports-section{padding:64px 0}
+  .reports-title{font-size:2rem;margin-bottom:48px}
+  .reports-step{flex-direction:column;gap:14px;padding:36px 0}
+  .reports-step-left,.reports-step-desc{width:100%;padding-right:0}
+}
+
+/* 隐藏/显示 */
+.hidden{display:none !important}
+
+/* 响应式 */
+@media(max-width:1100px){
+  .desk-grid{grid-template-columns:160px 1fr}
+  .side-panel{display:none}
+}
+@media(max-width:820px){
+  .app-shell{padding:20px}
+  .masthead{grid-template-columns:1fr}
+  .search-desk{min-width:auto}
+  .desk-grid{grid-template-columns:1fr}
+  .dimension-toc{position:static;display:flex;gap:8px;overflow-x:auto}
+  .toc-list{flex-direction:row}
+  .toc-item{white-space:nowrap}
+  .metric-grid{grid-template-columns:repeat(2,1fr)}
+  .watchlist-col{flex:0 0 100%;padding:30px 20px}
+  .watchlist-col+.watchlist-col::before{display:none}
+  .watchlist-col+.watchlist-col{border-top:1px solid var(--border-light);padding-top:30px;margin-top:10px}
+}
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- 模拟 TopNav -->
+  <nav class="topnav">
+    <div class="topnav-brand">
+      <div class="brand-mark">K</div>
+      <span>Karens Agent</span>
+    </div>
+    <ul class="topnav-links">
+      <li><a href="#" class="active">股票分析</a></li>
+      <li><a href="#">GitHub 热榜</a></li>
+    </ul>
+  </nav>
+
+  <!-- 子导航 -->
+  <nav class="subnav">
+    <a href="#" class="active">仪表盘</a>
+    <a href="#">历史报告</a>
+    <a href="#">配置管理</a>
+  </nav>
+
+  <!-- 头版搜索区 -->
+  <header class="masthead">
+    <div class="masthead-title">
+      <span class="issue-tag">MARKET INTELLIGENCE · 2026.07.11</span>
+      <h1>股票分析台</h1>
+      <p>输入股票代码，获取基于 iFind 数据的多维度市场简报</p>
+    </div>
+    <div class="search-desk" id="searchDesk">
+      <span class="search-label">CODE</span>
+      <input id="searchInput" type="text" placeholder="600519 / 贵州茅台" />
+      <button class="btn btn-primary" id="searchBtn">开始分析</button>
+      <button class="btn btn-report hidden" id="reportBtn">生成综合报告</button>
+    </div>
+  </header>
+
+  <div class="progress-line" id="progressLine"></div>
+  <div class="warning-banner" id="warningBanner">
+    部分维度数据缺失：风险评估接口未返回数据，其余 4 个维度正常。
+  </div>
+
+  <!-- 状态演示 -->
+  <div class="state-demo">
+    <span>状态演示：</span>
+    <button class="active" data-state="idle">未分析</button>
+    <button data-state="running">分析中</button>
+    <button data-state="done">完成</button>
+    <button data-state="partial">部分完成</button>
+    <button data-state="error">失败</button>
+  </div>
+
+  <!-- 三栏主布局 -->
+  <div class="desk-grid" id="deskGrid" style="margin-top:28px;">
+
+    <!-- 左侧维度目录 -->
+    <aside class="dimension-toc">
+      <h3>维度索引</h3>
+      <ul class="toc-list" id="tocList">
+        <li class="toc-item active" data-tab="market"><span class="toc-num">01</span><span class="toc-label">市场行情</span><span class="toc-status"></span></li>
+        <li class="toc-item" data-tab="finance"><span class="toc-num">02</span><span class="toc-label">财务分析</span><span class="toc-status"></span></li>
+        <li class="toc-item" data-tab="news"><span class="toc-num">03</span><span class="toc-label">新闻事件</span><span class="toc-status"></span></li>
+        <li class="toc-item missing" data-tab="risk"><span class="toc-num">04</span><span class="toc-label">风险评估</span><span class="toc-status"></span></li>
+        <li class="toc-item" data-tab="env"><span class="toc-num">05</span><span class="toc-label">市场环境</span><span class="toc-status"></span></li>
+      </ul>
+    </aside>
+
+    <!-- 中间维度大卡 -->
+    <section class="dimension-stage" id="dimensionStage">
+      <!-- 01 市场行情 -->
+      <div class="stage-panel" id="panel-market">
+        <div class="stage-header">
+          <div class="stage-title">
+            <h2>市场行情</h2>
+            <div class="stock-sub">贵州茅台 · 600519 · SH</div>
+          </div>
+          <span class="stage-badge badge-ok">数据正常</span>
+        </div>
+        <div class="stage-body">
+          <div class="metric-grid">
+            <div class="metric-cell">
+              <div class="metric-label">最新价</div>
+              <div class="metric-value up">1,842.50<span class="metric-unit">元</span></div>
+              <div class="metric-sub">+2.35% · 较前收盘</div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">今开 / 昨收</div>
+              <div class="metric-value">1,805.00<span class="metric-unit"> / 1,800.20</span></div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">最高 / 最低</div>
+              <div class="metric-value">1,850.00<span class="metric-unit"> / 1,798.50</span></div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">成交量</div>
+              <div class="metric-value">3.42<span class="metric-unit">万手</span></div>
+              <div class="metric-sub">成交额 62.8 亿</div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">MA5 / MA20</div>
+              <div class="metric-value up">1,812.40<span class="metric-unit"> / 1,789.60</span></div>
+              <div class="metric-sub">多头排列</div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">MACD</div>
+              <div class="metric-value up">+12.35</div>
+              <div class="metric-sub">金叉信号</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 02 财务分析 -->
+      <div class="stage-panel hidden" id="panel-finance">
+        <div class="stage-header">
+          <div class="stage-title"><h2>财务分析</h2><div class="stock-sub">贵州茅台 · 600519 · SH</div></div>
+          <span class="stage-badge badge-ok">数据正常</span>
+        </div>
+        <div class="stage-body">
+          <div class="finance-grid">
+            <div class="finance-block">
+              <h4>估值</h4>
+              <div class="finance-row"><span class="label">PE (TTM)</span><span class="value">28.5</span></div>
+              <div class="finance-row"><span class="label">PB</span><span class="value">9.2</span></div>
+              <div class="finance-row"><span class="label">PS (TTM)</span><span class="value">12.8</span></div>
+            </div>
+            <div class="finance-block">
+              <h4>盈利</h4>
+              <div class="finance-row"><span class="label">ROE</span><span class="value up">32.1%</span></div>
+              <div class="finance-row"><span class="label">净利率</span><span class="value up">51.2%</span></div>
+              <div class="finance-row"><span class="label">毛利率</span><span class="value">91.8%</span></div>
+            </div>
+            <div class="finance-block">
+              <h4>成长</h4>
+              <div class="finance-row"><span class="label">营收增速</span><span class="value up">+15.3%</span></div>
+              <div class="finance-row"><span class="label">利润增速</span><span class="value up">+18.7%</span></div>
+            </div>
+            <div class="finance-block">
+              <h4>偿债 / 现金流</h4>
+              <div class="finance-row"><span class="label">资产负债率</span><span class="value">21.3%</span></div>
+              <div class="finance-row"><span class="label">流动比率</span><span class="value">3.8</span></div>
+              <div class="finance-row"><span class="label">经营现金流</span><span class="value up">742亿</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 03 新闻事件 -->
+      <div class="stage-panel hidden" id="panel-news">
+        <div class="stage-header">
+          <div class="stage-title"><h2>新闻事件</h2><div class="stock-sub">贵州茅台 · 600519 · SH</div></div>
+          <span class="stage-badge badge-ok">数据正常</span>
+        </div>
+        <div class="stage-body">
+          <ul class="news-list">
+            <li class="news-item"><span class="news-title">贵州茅台发布2025年度业绩预告，净利润同比增长约15%</span><span class="news-time">07-10 16:32</span></li>
+            <li class="news-item"><span class="news-title">茅台集团与华为签署战略合作协议，推进数字化转型</span><span class="news-time">07-09 14:15</span></li>
+            <li class="news-item"><span class="news-title">机构调研：茅台终端动销良好，批价稳中有升</span><span class="news-time">07-08 10:48</span></li>
+            <li class="news-item"><span class="news-title">北向资金连续5日净买入贵州茅台，累计超20亿元</span><span class="news-time">07-07 09:20</span></li>
+            <li class="news-item"><span class="news-title">贵州茅台公告：2025年半年度分红方案，每股派发现金红利21.91元</span><span class="news-time">07-05 18:05</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 04 风险评估（缺失） -->
+      <div class="stage-panel hidden" id="panel-risk">
+        <div class="stage-header">
+          <div class="stage-title"><h2>风险评估</h2><div class="stock-sub">贵州茅台 · 600519 · SH</div></div>
+          <span class="stage-badge badge-missing">数据不可用</span>
+        </div>
+        <div class="stage-body">
+          <div class="missing-state">
+            <div class="missing-stamp">Data Unavailable</div>
+            <h4>该维度数据暂未收录</h4>
+            <p>iFind 风险评估接口返回空数据，可能原因：该股票暂未覆盖 ESG 评级或风险事件数据。</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 05 市场环境 -->
+      <div class="stage-panel hidden" id="panel-env">
+        <div class="stage-header">
+          <div class="stage-title"><h2>市场环境</h2><div class="stock-sub">宏观与行业对比</div></div>
+          <span class="stage-badge badge-ok">数据正常</span>
+        </div>
+        <div class="stage-body">
+          <div class="metric-grid">
+            <div class="metric-cell">
+              <div class="metric-label">上证指数</div>
+              <div class="metric-value up">3,245.18<span class="metric-unit">+0.82%</span></div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">深证成指</div>
+              <div class="metric-value up">11,032.55<span class="metric-unit">+1.15%</span></div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">食品饮料板块</div>
+              <div class="metric-value up">+1.42%</div>
+              <div class="metric-sub">领涨行业第 3</div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">北向资金</div>
+              <div class="metric-value up">+48.2<span class="metric-unit">亿</span></div>
+              <div class="metric-sub">连续 3 日净流入</div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">10Y 国债收益率</div>
+              <div class="metric-value">2.14<span class="metric-unit">%</span></div>
+            </div>
+            <div class="metric-cell">
+              <div class="metric-label">美元指数</div>
+              <div class="metric-value down">103.45</div>
+              <div class="metric-sub">-0.32%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 右侧边栏（暂时空置） -->
+    <aside class="side-panel"></aside>
+
+  </div><!-- /desk-grid -->
+
+  <!-- 底部自选股区域 -->
+  <section class="watchlist-bottom" id="watchlistBottom">
+    <div class="watchlist-bottom-header">
+      <h3>我的自选股</h3>
+      <a href="#" class="side-link">管理自选股 →</a>
+    </div>
+    <div class="watchlist-carousel-window" id="watchWindow">
+      <div class="watchlist-track" id="watchTrack"></div>
+    </div>
+    <div class="watchlist-nav" id="watchNav">
+      <button class="watchlist-arrow" id="watchPrev" aria-label="上一个"><span>&#8249;</span></button>
+      <div class="watchlist-dots" id="watchDots"></div>
+      <button class="watchlist-arrow" id="watchNext" aria-label="下一个"><span>&#8250;</span></button>
+    </div>
+  </section>
+
+  <!-- 最近分析报告区域 -->
+  <section class="reports-section">
+    <div class="reports-container">
+
+      <h2 class="reports-title">最近分析报告</h2>
+
+      <div class="reports-steps">
+        <!-- 报告 1 -->
+        <div class="reports-step">
+          <div class="reports-step-left">
+            <svg class="reports-step-icon" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="#1a1a1a" stroke-width="1.5"/>
+              <path d="M8 12 L11 15 L16 9" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="reports-step-title">贵州茅台 · 600519 · 看多 82 分</span>
+          </div>
+          <p class="reports-step-desc">基于多维度数据综合评估，贵州茅台当前估值合理，技术面呈多头排列，北向资金持续流入，基本面稳健，建议关注回调后的布局机会。</p>
+        </div>
+
+        <!-- 报告 2 -->
+        <div class="reports-step">
+          <div class="reports-step-left">
+            <svg class="reports-step-icon" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="#1a1a1a" stroke-width="1.5"/>
+              <line x1="8" y1="12" x2="16" y2="12" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <span class="reports-step-title">五粮液 · 000858 · 震荡 61 分</span>
+          </div>
+          <p class="reports-step-desc">五粮液近期走势震荡，MACD 处于零轴附近徘徊，市场情绪中性。估值处于历史中位区间，短期缺乏明确方向，建议维持观望。</p>
+        </div>
+
+        <!-- 报告 3 -->
+        <div class="reports-step">
+          <div class="reports-step-left">
+            <svg class="reports-step-icon" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="#1a1a1a" stroke-width="1.5"/>
+              <path d="M8 12 L11 15 L16 9" stroke="#1a1a1a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="reports-step-title">宁德时代 · 300750 · 看多 78 分</span>
+          </div>
+          <p class="reports-step-desc">新能源赛道景气度持续回升，宁德时代作为行业龙头受益显著。技术指标呈现底部放量突破信号，机构持仓比例稳步提升，中长期配置价值凸显。</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+</div><!-- /app-shell -->
+
+<script>
+const dimNames = ['市场行情','财务分析','新闻事件','风险评估','市场环境'];
+let currentTab = 'market';
+let currentState = 'idle';
+let dimIdx = 0;
+
+// Tab 切换
+document.getElementById('tocList').addEventListener('click', function(e){
+  const item = e.target.closest('.toc-item');
+  if(!item) return;
+  const tab = item.dataset.tab;
+  switchTab(tab);
+});
+
+function switchTab(tab){
+  currentTab = tab;
+  document.querySelectorAll('.toc-item').forEach(el=>el.classList.remove('active'));
+  document.querySelector(`.toc-item[data-tab="${tab}"]`).classList.add('active');
+  document.querySelectorAll('.stage-panel').forEach(el=>el.classList.add('hidden'));
+  document.getElementById('panel-'+tab).classList.remove('hidden');
+}
+
+// 状态机
+document.querySelectorAll('.state-demo button').forEach(btn=>{
+  btn.addEventListener('click', ()=>setState(btn.dataset.state));
+});
+
+function setState(state){
+  currentState = state;
+  const input = document.getElementById('searchInput');
+  const desk = document.getElementById('searchDesk');
+  const btn = document.getElementById('searchBtn');
+  const reportBtn = document.getElementById('reportBtn');
+  const progress = document.getElementById('progressLine');
+  const warning = document.getElementById('warningBanner');
+
+  desk.classList.remove('running');
+  reportBtn.classList.add('hidden');
+  warning.classList.remove('visible');
+
+  switch(state){
+    case 'idle':
+      input.disabled = false; input.value = '';
+      btn.textContent = '开始分析'; btn.disabled = false;
+      progress.innerHTML = '';
+      break;
+    case 'running':
+      input.disabled = true; btn.disabled = true; desk.classList.add('running');
+      btn.innerHTML = '<span class="spinner"></span> 分析中';
+      dimIdx = 0; simulateProgress();
+      break;
+    case 'done':
+      input.disabled = true; btn.textContent = '重新分析'; btn.disabled = false;
+      progress.innerHTML = '';
+      reportBtn.classList.remove('hidden');
+      break;
+    case 'partial':
+      input.disabled = true; btn.textContent = '重新分析'; btn.disabled = false;
+      progress.innerHTML = '';
+      reportBtn.classList.remove('hidden');
+      warning.classList.add('visible');
+      break;
+    case 'error':
+      input.disabled = false; btn.textContent = '重试'; btn.disabled = false;
+      progress.innerHTML = '<span style="color:var(--red)">分析失败：网络超时，请检查 iFind 连接状态</span>';
+      break;
+  }
+
+  document.querySelectorAll('.state-demo button').forEach(b=>b.classList.remove('active'));
+  document.querySelector(`.state-demo button[data-state="${state}"]`).classList.add('active');
+}
+
+function simulateProgress(){
+  if(currentState !== 'running') return;
+  if(dimIdx >= dimNames.length){setState('done'); return;}
+  const progress = document.getElementById('progressLine');
+  progress.innerHTML = '<span class="spinner"></span> 正在采集「'+dimNames[dimIdx]+'」数据...';
+  dimIdx++;
+  if(dimIdx < dimNames.length) setTimeout(simulateProgress, 900 + Math.random()*600);
+  else setTimeout(()=>setState('done'), 600);
+}
+
+// ============================================================
+// 底部自选股 — 极简报刊风轮播（单股滑动）
+// ============================================================
+(function(){
+  const stocks = [
+    { code:'600519', name:'贵州茅台', price:'1,842.50', change:'+2.35%', up:true },
+    { code:'000858', name:'五粮液',   price:'152.30',   change:'-1.22%', up:false },
+    { code:'300750', name:'宁德时代', price:'218.60',   change:'+3.15%', up:true },
+    { code:'601318', name:'中国平安', price:'48.35',    change:'-0.78%', up:false },
+    { code:'002594', name:'比亚迪',   price:'287.20',   change:'+1.56%', up:true },
+  ];
+
+  const VISIBLE = 3;
+  const total = stocks.length;
+  const maxPos = total - VISIBLE;         // 0-indexed，当前窗口起始索引
+  const needsNav = total > VISIBLE;
+
+  const track = document.getElementById('watchTrack');
+  const prevBtn = document.getElementById('watchPrev');
+  const nextBtn = document.getElementById('watchNext');
+  const dotsBox = document.getElementById('watchDots');
+  const nav = document.getElementById('watchNav');
+  const windowEl = document.getElementById('watchWindow');
+  let current = 0;
+
+  // ---- 构建：所有股票一行排开，每列 1/3 宽 ----
+  function build(){
+    track.innerHTML = '';
+    stocks.forEach(s => {
+      const col = document.createElement('div');
+      col.className = 'watchlist-col';
+      col.innerHTML = `
+        <div class="watchlist-code">${s.code}</div>
+        <div class="watchlist-name">${s.name}</div>
+        <div class="watchlist-price ${s.up?'up':'down'}">${s.price}</div>
+        <span class="watchlist-change ${s.up?'up':'down'}">${s.change}</span>
+        <button class="watchlist-analyze-btn" data-code="${s.code}">开始分析</button>`;
+      track.appendChild(col);
+    });
+  }
+
+  // ---- 圆点：≤3 无；4~6 → 1 枚；≥7 → 2 枚 ----
+  function buildDots(){
+    dotsBox.innerHTML = '';
+    if(!needsNav) return;
+    const dotCount = maxPos <= 3 ? 1 : 2;           // maxPos: 1,2,3 → 1枚；4+ → 2枚
+    for(let i = 0; i < dotCount; i++){
+      const dot = document.createElement('span');
+      dot.className = 'watchlist-dot';
+      dot.addEventListener('click', () => {
+        goTo(dotCount === 1 ? (current === 0 ? maxPos : 0) : (i === 0 ? 0 : maxPos));
+      });
+      dotsBox.appendChild(dot);
+    }
+  }
+
+  // ---- 导航 ----
+  function goTo(p){
+    current = Math.max(0, Math.min(maxPos, p));
+    render();
+  }
+
+  function render(){
+    const colPct = 100 / VISIBLE;                   // 每列占容器百分比
+    track.style.transform = `translateX(-${current * colPct}%)`;
+    // 更新圆点激活态
+    const dots = dotsBox.querySelectorAll('.watchlist-dot');
+    dots.forEach(d => d.classList.remove('active'));
+    if(dots.length === 1){
+      if(current === 0) dots[0].classList.add('active');
+    } else if(dots.length === 2){
+      dots[current < Math.ceil(maxPos / 2) ? 0 : 1].classList.add('active');
+    }
+    prevBtn.disabled = current === 0;
+    nextBtn.disabled = current === maxPos;
+  }
+
+  // ---- 触摸/拖拽 ----
+  let startX = 0, dragging = false, startTx = 0;
+  windowEl.addEventListener('pointerdown', e => {
+    if(!needsNav) return;
+    dragging = true; startX = e.clientX;
+    startTx = -current * (windowEl.offsetWidth / VISIBLE);
+    track.style.transition = 'none';
+  });
+  window.addEventListener('pointermove', e => {
+    if(!dragging) return;
+    track.style.transform = `translateX(${startTx + (e.clientX - startX)}px)`;
+  });
+  window.addEventListener('pointerup', e => {
+    if(!dragging) return;
+    dragging = false;
+    track.style.transition = 'transform .45s var(--ease-out)';
+    const dx = e.clientX - startX;
+    const colW = windowEl.offsetWidth / VISIBLE;
+    if(dx < -colW * 0.25) goTo(current + 1);
+    else if(dx > colW * 0.25) goTo(current - 1);
+    else render();
+  });
+
+  // ---- 按钮 ----
+  prevBtn.addEventListener('click', () => goTo(current - 1));
+  nextBtn.addEventListener('click', () => goTo(current + 1));
+
+  // ---- "开始分析" ----
+  track.addEventListener('click', e => {
+    const btn = e.target.closest('.watchlist-analyze-btn');
+    if(!btn) return;
+    document.getElementById('searchInput').value = btn.dataset.code;
+    document.getElementById('searchInput').scrollIntoView({ behavior:'smooth' });
+  });
+
+  // ---- 初始化 ----
+  if(!needsNav) nav.classList.add('hidden');
+  build();
+  buildDots();
+  render();
+
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(render, 150);
+  });
+})();
+</script>
+
+</body>
+</html>

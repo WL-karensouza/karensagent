@@ -1,0 +1,38 @@
+{
+  "findings": {
+    "certificate": {
+      "ok": true,
+      "subject": "((('countryName', 'CN'),), (('stateOrProvinceName', '浙江省'),), (('localityName', '杭州市'),), (('organizationName', 'Hithink RoyalFlush Information Network Co.,Ltd.'),), (('commonName', '*.10jqka.com.cn'),))",
+      "issuer": "((('countryName', 'US'),), (('organizationName', 'DigiCert, Inc.'),), (('commonName', 'GeoTrust G2 TLS CN RSA4096 SHA256 2022 CA1'),))",
+      "not_before": "Jun  2 00:00:00 2026 GMT",
+      "not_after": "Dec 17 23:59:59 2026 GMT",
+      "san": "(('DNS', '*.10jqka.com.cn'), ('DNS', '*.kuaicha365.com'), ('DNS', '*.forfunds.cn'), ('DNS', '*.aicubes.cn'), ('DNS', '*.iwencai.cn'), ('DNS', '*.0033.cn'), ('DNS', '*.300033.info'), ('DNS', '*.touzime.com'), ('DNS', '*.touzime.cn'), ('DNS', '*.touzime.com.cn'), ('DNS', '*.touzime.net'), ('DNS', '*.0033cas.com'), ('DNS', '*.0033cas.cn'), ('DNS', '*.hexin.cn'), ('DNS', '*.thsi.cn'), ('DNS', '*.iwencai.com'), ('DNS', '*.liejin99.com'), ('DNS', '*.0033.com'), ('DNS', '*.ths123.com'), ('DNS', '*.myhexin.com'), ('DNS', '*.51ifind.cn'), ('DNS', '*.51ifind.com'), ('DNS', '*.5ifund.com'), ('DNS', '*.5ifund.cn'), ('DNS', '*.hexin0033.net'), ('DNS', '*.5ifind.com.cn'), ('DNS', '*.5ifind.cn'), ('DNS', '*.voiceclub.cn'), ('DNS', '*.thsyun.com'), ('DNS', '10jqka.com.cn'))",
+      "remaining_days": 160
+    },
+    "verify_test": {
+      "verify=True": {
+        "ok": true,
+        "status_code": 200,
+        "session_id": "7e2f9c59-61a7-4321-9dde-6ec1ec448afd"
+      },
+      "verify=False": {
+        "ok": true,
+        "status_code": 200,
+        "session_id": "446f9ddf-2bef-445f-84a6-ba0f62bcbe38"
+      }
+    },
+    "certifi_test": {
+      "ok": true,
+      "ca_bundle": "D:\\AppGallery\\python\\Lib\\site-packages\\certifi\\cacert.pem"
+    }
+  },
+  "risks": [
+    {
+      "severity": "低",
+      "finding": "verify=True 可成功连接，无需特殊处理",
+      "impact": "无"
+    }
+  ],
+  "mitigations": [],
+  "recommendation": "use_certifi"
+}

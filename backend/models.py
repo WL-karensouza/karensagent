@@ -88,7 +88,7 @@ class StockReport(Base):
     stock_name = Column(String(50), default="", comment="股票名称")
     score = Column(Integer, default=0, comment="综合评分 0-100")
     decision = Column(String(10), default="", comment="综合判断 看多/震荡/看空")
-    summary = Column(String(200), default="", comment="一句话摘要")
+    summary = Column(Text, default="", comment="综合评估摘要")
     report_json = Column(Text, nullable=False, comment="完整报告 JSON")
     markdown = Column(Text, default="", comment="Markdown 格式报告")
     token_used = Column(Integer, default=0, comment="消耗 Token 数")

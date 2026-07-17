@@ -3,8 +3,15 @@
 启动命令: uvicorn main:app --host 0.0.0.0 --port 8900 --reload
 """
 
+import sys
 import os
 import atexit
+
+# Windows 控制台 UTF-8 编码（防止 emoji 导致启动崩溃）
+if sys.platform == "win32":
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -72,7 +79,19 @@ app.include_router(stock_router)
 # ── 根路径 ──
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "service": "GitHub Agent", "version": "1.1.0"}
+    """健康检查 — 含 iFinD MCP 连通性探测"""
+    ifind_ok = False
+    try:
+        from stock_agent.skill import call_skill
+        call_skill("stock", "stock_highfreq_quotes", {
+            "symbols": "600519.SH",
+            "indicators": "latest",
+            "data_mode": "latest",
+        })
+        ifind_ok = True
+    except Exception:
+        pass
+    return {"status": "ok", "ifind": ifind_ok}
 
 
 # ── 前端静态文件（前后端一体部署） ──
