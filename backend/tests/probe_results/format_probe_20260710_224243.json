@@ -1,0 +1,146 @@
+[
+  {
+    "id": "stock_market",
+    "server": "stock",
+    "tool": "get_stock_info",
+    "params": {
+      "query": "688981.SH 收盘价 涨跌幅 PE 换手率 MACD"
+    },
+    "expected_format": "markdown",
+    "ok": true,
+    "format": "markdown",
+    "record_count": 6,
+    "field_names": [
+      "证券代码",
+      "证券简称",
+      "日期",
+      "换手率（单位：%）",
+      "涨跌幅（单位：%）",
+      "收盘价（单位：元）"
+    ]
+  },
+  {
+    "id": "stock_financials",
+    "server": "stock",
+    "tool": "get_stock_financials",
+    "params": {
+      "query": "688981.SH ROE ROA 净利润增速 营收增速"
+    },
+    "expected_format": "markdown",
+    "ok": true,
+    "format": "markdown",
+    "record_count": 15,
+    "field_names": [
+      "证券代码",
+      "证券简称",
+      "日期",
+      "净资产收益率ROE(扣除／摊薄)（单位：%）",
+      "净资产收益率ROE(TTM)（单位：%）",
+      "净资产收益率ROE（TTM，平均）（单位：%）",
+      "归属母公司股东的净利润(同比增长率)（单位：%）",
+      "净资产收益率ROE(平均，含少数股东)（单位：%）",
+      "单季度.营业收入同比增长率（单位：%）",
+      "净资产收益率ROE(扣除／加权)（单位：%）",
+      "净资产收益率ROE(平均,同花顺计算)（单位：%）",
+      "净利润(同比增长率)（单位：%）",
+      "单季度.营业总收入同比增长率（单位：%）"
+    ]
+  },
+  {
+    "id": "stock_risk",
+    "server": "stock",
+    "tool": "get_risk_indicators",
+    "params": {
+      "query": "688981.SH 贝塔 波动率 夏普比率 最大回撤"
+    },
+    "expected_format": "markdown",
+    "ok": true,
+    "format": "markdown",
+    "record_count": 1,
+    "field_names": [
+      "证券代码",
+      "证券简称",
+      "Sharpe",
+      "区间最大回撤（单位：%）",
+      "波动率(年化)（单位：%）"
+    ]
+  },
+  {
+    "id": "stock_esg",
+    "server": "stock",
+    "tool": "get_esg_data",
+    "params": {
+      "query": "688981.SH ESG评级"
+    },
+    "expected_format": "markdown",
+    "ok": true,
+    "format": "markdown",
+    "record_count": 17,
+    "field_names": [
+      "证券代码",
+      "证券简称",
+      "日期",
+      "同花顺ESG总评分"
+    ]
+  },
+  {
+    "id": "stock_events",
+    "server": "stock",
+    "tool": "get_stock_events",
+    "params": {
+      "query": "688981.SH 近期重大事件"
+    },
+    "expected_format": "markdown",
+    "ok": true,
+    "format": "markdown",
+    "record_count": 1,
+    "field_names": [
+      "证券代码",
+      "证券简称",
+      "重大事项(重组)停牌日"
+    ]
+  },
+  {
+    "id": "news_search",
+    "server": "news",
+    "tool": "search_news",
+    "params": {
+      "query": "中芯国际 半导体芯片",
+      "time_start": "2026-06-01",
+      "time_end": "2026-07-10",
+      "size": 5
+    },
+    "expected_format": "json_array",
+    "ok": true,
+    "format": "json_array",
+    "record_count": 6,
+    "field_names": [
+      "资讯标题",
+      "资讯内容",
+      "日期",
+      "URL",
+      "备注"
+    ]
+  },
+  {
+    "id": "news_notice",
+    "server": "news",
+    "tool": "search_notice",
+    "params": {
+      "query": "688981.SH 公告",
+      "time_start": "2026-04-01",
+      "time_end": "2026-07-10",
+      "size": 5
+    },
+    "expected_format": "json_array",
+    "ok": true,
+    "format": "json_array",
+    "record_count": 6,
+    "field_names": [
+      "公告标题",
+      "公告片段内容",
+      "日期",
+      "备注"
+    ]
+  }
+]

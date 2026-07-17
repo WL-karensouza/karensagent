@@ -1,0 +1,48 @@
+[
+  {
+    "step": "baseline_cold",
+    "ok": true,
+    "elapsed_s": 4.19,
+    "error": null,
+    "session_active": true
+  },
+  {
+    "step": "hot_reuse",
+    "ok": true,
+    "elapsed_s": 0.6,
+    "error": null,
+    "session_active": true
+  },
+  {
+    "step": "idle_2m_reuse",
+    "wait_min": 2,
+    "ok": true,
+    "elapsed_s": 0.67,
+    "error": null,
+    "session_active": true
+  },
+  {
+    "step": "idle_2m_rebuild",
+    "wait_min": 2,
+    "ok": true,
+    "elapsed_s": 1.25,
+    "error": null,
+    "session_active": true
+  },
+  {
+    "step": "idle_5m_reuse",
+    "wait_min": 5,
+    "ok": true,
+    "elapsed_s": 1.87,
+    "error": null,
+    "session_active": true
+  },
+  {
+    "step": "idle_5m_rebuild",
+    "wait_min": 5,
+    "ok": true,
+    "elapsed_s": 1.23,
+    "error": null,
+    "session_active": true
+  }
+]

@@ -1,7 +1,9 @@
 """股票分析 API 路由
 
 端点：
-  POST   /api/stock/analyze              — 触发个股分析（异步 + 轮询）
+  POST   /api/stock/skill-report         — 综合数据报告（SSE 流式，由 SKILL 驱动）
+  POST   /api/stock/skill-report/invest  — 投研报告（SKILL 数据 → DeepSeek 分析，SSE 流式）
+  POST   /api/stock/analyze              — 触发个股分析（异步 + 轮询，内部走 SKILL）
   GET    /api/stock/analyze/result/{id}  — 查询分析结果
   GET    /api/stock/reports              — 历史报告列表
   GET    /api/stock/reports/{id}         — 报告详情
@@ -12,10 +14,12 @@
   POST   /api/stock/trigger/market-report — 触发自选股分析
 """
 
+import asyncio
 import uuid
 import time
 import threading
 from fastapi import APIRouter, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/stock", tags=["stock"])
@@ -52,6 +56,7 @@ def _create_task() -> str:
 
 class AnalyzeRequest(BaseModel):
     stock_code: str
+    dimensions: list[str] | None = None
 
 
 class WatchlistAdd(BaseModel):
@@ -73,16 +78,23 @@ class WatchlistUpdate(BaseModel):
 # ═══════════════════════════════════════════
 
 def _run_analysis(task_id: str, stock_code: str):
-    """后台执行个股分析：采集 → LLM 分析 → 渲染 → 存库"""
+    """后台执行个股分析：SKILL 取数 → LLM 分析 → 渲染 → 存库"""
     try:
-        from stock_agent.fetcher import fetch_stock_data
-        from stock_agent.analyze import analyze, render_markdown
+        from stock_agent.skill.report import generate_report_sync
+        from stock_agent.analyze import analyze
+        from stock_agent.render import render_markdown
         from database import save_stock_report
 
-        data = fetch_stock_data(stock_code)
-        report, usage = analyze(data)
-        md = render_markdown(data, report, usage)
-        stock_name = data.get("stock_name", stock_code)
+        # Step 1: SKILL 采集 10 维度数据 → Markdown 报告
+        data_result = generate_report_sync(stock_code)
+        data_md = data_result["markdown"]
+        stock_name = data_result.get("stock_name", stock_code)
+
+        # Step 2: DeepSeek 分析
+        report, usage = analyze(data_md)
+
+        # Step 3: 渲染
+        md = render_markdown(stock_code, report, usage, stock_name)
 
         report_id = save_stock_report(
             stock_code=stock_code,
@@ -97,13 +109,16 @@ def _run_analysis(task_id: str, stock_code: str):
             "report_id": report_id,
             "report": report,
             "usage": usage,
-            "message": f"{stock_name}({stock_code}) 分析完成",
+            "message": f"{stock_code} 分析完成",
             "_created": _stock_tasks[task_id]["_created"],
         }
     except Exception as e:
+        import traceback, sys
+        tb = traceback.format_exc()
+        print(f"[_run_analysis ERROR] {tb}", file=sys.stderr)
         _stock_tasks[task_id] = {
             "status": "error",
-            "message": str(e),
+            "message": f"{type(e).__name__}: {e}",
             "_created": _stock_tasks[task_id]["_created"],
         }
 
@@ -111,8 +126,9 @@ def _run_analysis(task_id: str, stock_code: str):
 def _run_watchlist_analyze(task_id: str):
     """后台执行自选股分析：从数据库读取启用状态的自选股，逐只分析（不推送飞书）"""
     try:
-        from stock_agent.fetcher import fetch_stock_data
-        from stock_agent.analyze import analyze, render_markdown
+        from stock_agent.skill.report import generate_report_sync
+        from stock_agent.analyze import analyze
+        from stock_agent.render import render_markdown
         from database import save_stock_report, get_watchlist
 
         watchlist = get_watchlist()
@@ -130,10 +146,11 @@ def _run_watchlist_analyze(task_id: str):
         results = []
         for code in codes:
             try:
-                data = fetch_stock_data(code)
-                report, usage = analyze(data)
-                md = render_markdown(data, report, usage)
-                stock_name = data.get("stock_name", code)
+                data_result = generate_report_sync(code)
+                data_md = data_result["markdown"]
+                stock_name = data_result.get("stock_name", code)
+                report, usage = analyze(data_md)
+                md = render_markdown(code, report, usage, stock_name)
                 save_stock_report(
                     stock_code=code, stock_name=stock_name,
                     report=report, markdown=md, token_used=usage.get("total", 0),
@@ -191,11 +208,22 @@ def get_analyze_result(task_id: str):
 def list_reports(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(10, ge=1, le=50, description="每页条数"),
+    search: str = Query("", description="模糊搜索股票代码或名称"),
+    date_from: str = Query("", description="起始日期 YYYY-MM-DD"),
+    date_to: str = Query("", description="截止日期 YYYY-MM-DD"),
+    decision: str = Query("", description="判断筛选 看多/震荡/看空"),
 ):
-    """分页获取历史报告列表"""
+    """分页获取历史报告列表（支持筛选）"""
     from database import get_stock_reports
 
-    rows, total = get_stock_reports(page=page, page_size=page_size)
+    rows, total = get_stock_reports(
+        page=page,
+        page_size=page_size,
+        search=search,
+        date_from=date_from,
+        date_to=date_to,
+        decision=decision,
+    )
     return {"code": 0, "data": {"items": rows, "total": total, "page": page, "page_size": page_size}}
 
 
@@ -280,3 +308,129 @@ def trigger_market_report():
     task_id = _create_task()
     threading.Thread(target=_run_watchlist_analyze, args=(task_id,), daemon=True).start()
     return {"code": 0, "task_id": task_id, "message": "已触发自选股分析"}
+
+
+# ═══════════════════════════════════════════
+# 新增：SKILL 驱动的 SSE 端点
+# ═══════════════════════════════════════════
+
+def _format_sse_invest(event_type: str, data: dict) -> str:
+    """格式化为投研报告 SSE 消息"""
+    import json as _json
+    payload = {"type": event_type, **data}
+    return f"data: {_json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+@router.post("/skill-report")
+async def skill_report(req: AnalyzeRequest):
+    """生成综合数据报告（SSE 流式，10 维度 SKILL 采集）
+
+    前端通过 fetch + ReadableStream 接收 SSE 事件：
+      - progress: {stage, label, status, current, total}
+      - complete: {report: str (完整 Markdown)}
+    """
+    from stock_agent.skill.report import generate_report_stream
+
+    return StreamingResponse(
+        generate_report_stream(req.stock_code, req.dimensions),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post("/skill-report/invest")
+async def skill_report_invest(req: AnalyzeRequest):
+    """生成投研报告（SKILL 数据 → DeepSeek 分析，SSE 流式）
+
+    两阶段 SSE：
+      1. 数据采集进度（10 维度，与 skill-report 相同）
+      2. DeepSeek 分析完成 → 推送投研报告 Markdown
+    """
+    from stock_agent.skill.report import generate_report_stream
+
+    async def invest_gen():
+        # Phase 1: 数据采集 — 只转发 progress 事件，不转发 complete
+        # （complete 里是原始数据 Markdown，仅供 DeepSeek 分析，不展示给前端）
+        report_md = ""
+        stock_name = req.stock_code
+        dim_count = 0
+        async for sse_msg in generate_report_stream(req.stock_code, req.dimensions):
+            if '"type": "complete"' in sse_msg:
+                try:
+                    import json as _json
+                    data_str = sse_msg.replace("data: ", "").strip()
+                    payload = _json.loads(data_str)
+                    report_md = payload.get("report", "")
+                    stock_name = payload.get("stock_name", req.stock_code)
+                except Exception:
+                    pass
+                continue  # 关键：不要把原始数据的 complete 事件发给前端
+            # 只转发 progress / start 事件
+            yield sse_msg
+            if '"type": "progress"' in sse_msg and '"status": "done"' in sse_msg:
+                dim_count += 1
+
+        if not report_md:
+            yield _format_sse_invest("error", {"message": "数据采集失败，无法生成投研报告"})
+            return
+
+        # Phase 2: DeepSeek 分析
+        yield _format_sse_invest("progress", {
+            "stage": "llm",
+            "label": "DeepSeek 分析",
+            "status": "running",
+            "current": dim_count,
+            "total": dim_count,
+        })
+
+        try:
+            from stock_agent.analyze import analyze, render_markdown
+
+            loop = asyncio.get_running_loop()
+            report_json, usage = await loop.run_in_executor(
+                None, analyze, report_md,
+            )
+            invest_md = render_markdown(req.stock_code, report_json, usage, stock_name)
+
+            # 存库，前端跳转详情页需要 report_id
+            report_id = None
+            try:
+                from database import save_stock_report
+                report_id = await loop.run_in_executor(
+                    None,
+                    lambda: save_stock_report(
+                        stock_code=req.stock_code,
+                        stock_name=stock_name,
+                        report=report_json,
+                        markdown=invest_md,
+                        token_used=usage.get("total", 0),
+                    ),
+                )
+            except Exception:
+                pass
+
+            yield _format_sse_invest("complete", {
+                "report": invest_md,
+                "usage": usage,
+                "score": report_json.get("score"),
+                "decision": report_json.get("decision"),
+                "report_id": report_id,
+                "stock_code": req.stock_code,
+                "stock_name": stock_name,
+            })
+        except Exception as e:
+            yield _format_sse_invest("error", {"message": f"投研分析失败：{e}"})
+
+    return StreamingResponse(
+        invest_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

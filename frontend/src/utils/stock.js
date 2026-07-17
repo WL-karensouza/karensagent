@@ -1,5 +1,14 @@
 /* 股票分析共享工具函数 */
 
+/* ── 分析状态枚举 ── */
+export const ANALYSIS_STATE = {
+  IDLE: 'idle',
+  RUNNING: 'running',
+  DONE: 'done',
+  PARTIAL: 'partial',
+  ERROR: 'error',
+}
+
 /* 评分对应的 CSS 颜色变量 */
 export function scoreColor(score) {
   if (score >= 70) return 'var(--green)'

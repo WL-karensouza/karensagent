@@ -1,6 +1,9 @@
 import { defineStore } from 'pinia'
 import * as api from '../api/index.js'
 
+/* localStorage 键名 — 公司画像缓存 */
+const PROFILE_CACHE_KEY = 'stock_company_profile'
+
 export const useStockStore = defineStore('stock', {
   state: () => ({
     /* 报告 — 按页面独立，避免互相污染 */
@@ -17,6 +20,14 @@ export const useStockStore = defineStore('stock', {
     analyzing: false,
     analyzeTaskId: null,
     analyzeResult: null,
+
+    /* SSE 流式报告 */
+    sseProgress: { current: 0, total: 10, stages: [] },
+    sseGenerating: false,
+    sseReportMd: '',
+    sseReportMode: null,   // 'data' | 'invest'
+    sseSections: {},       // { dim_key: prose_text, ... } 各维度散文
+    sseReportId: null,     // 投研报告存库后的 ID，用于跳转详情
 
     /* 加载 */
     loading: false,
@@ -46,8 +57,8 @@ export const useStockStore = defineStore('stock', {
         }
         this.analyzeTaskId = res.task_id
 
-        // 轮询结果：每 3s 一次，最多 20 次（60s）
-        for (let i = 0; i < 20; i++) {
+        // 轮询结果：每 3s 一次，最多 80 次（240s，适配 deepseek-reasoner ~3min 推理时间）
+        for (let i = 0; i < 80; i++) {
           await new Promise(r => setTimeout(r, 3000))
           try {
             const result = await api.getStockAnalyzeResult(this.analyzeTaskId)
@@ -76,6 +87,136 @@ export const useStockStore = defineStore('stock', {
       }
     },
 
+    /* ── SKILL 数据报告（SSE 流式，仅取数不分析） ── */
+    triggerSkillReport(stockCode) {
+      this._startSse('data')
+      let dimensions = null
+      try {
+        const raw = localStorage.getItem('stock_settings_dimensions')
+        if (raw) dimensions = JSON.parse(raw)
+      } catch (_) {}
+      return api.fetchSkillReport(stockCode, {
+        onProgress: (data) => { this._onSseProgress(data) },
+        onComplete: (data) => { this._onSseComplete('data', data) },
+        onError: (err) => { this._onSseError(err) },
+      }, dimensions)
+    },
+
+    /* ── SKILL 投研报告（SSE 流式，取数 + DeepSeek 分析） ── */
+    triggerInvestReport(stockCode) {
+      this._startSse('invest')
+      let dimensions = null
+      try {
+        const raw = localStorage.getItem('stock_settings_dimensions')
+        if (raw) dimensions = JSON.parse(raw)
+      } catch (_) {}
+      return api.fetchInvestReport(stockCode, {
+        onProgress: (data) => { this._onSseProgress(data) },
+        onComplete: (data) => { this._onSseComplete('invest', data) },
+        onError: (err) => { this._onSseError(err) },
+      }, dimensions)
+    },
+
+    /* ── SSE 内部方法 ── */
+    _startSse(mode) {
+      this.sseGenerating = true
+      this.sseReportMd = ''
+      this.sseReportMode = mode
+      this.sseSections = {}
+      this.sseReportId = null
+      this.sseProgress = { current: 0, total: 10, stages: [] }
+      this.analyzeResult = null
+      /* 新分析开始时清除旧的公司画像缓存 */
+      if (mode === 'invest') {
+        try { localStorage.removeItem(PROFILE_CACHE_KEY) } catch (_) {}
+      }
+    },
+
+    _onSseProgress(data) {
+      // 更新进度：stages 数组记录每个维度的状态
+      const stages = [...this.sseProgress.stages]
+      const idx = stages.findIndex(s => s.stage === data.stage)
+      const entry = { stage: data.stage, label: data.label, status: data.status, error: data.error }
+      if (idx >= 0) stages[idx] = entry
+      else stages.push(entry)
+      this.sseProgress = { current: data.current, total: data.total, stages }
+    },
+
+    async _onSseComplete(mode, data) {
+      this.sseGenerating = false
+      this.sseReportMd = data.report || ''
+      this.sseSections = data.sections || {}
+      this.sseReportId = data.report_id || null
+      if (mode === 'invest' && data.score !== undefined) {
+        this.analyzeResult = {
+          report: {
+            stock_name: '', stock_code: '',
+            score: data.score,
+            decision: data.decision,
+            summary: '',
+          },
+          report_id: data.report_id || null,
+          message: '投研报告生成完成',
+        }
+        /* 投研报告完成后缓存公司画像到 localStorage，刷新不丢 */
+        try {
+          const cache = {
+            stockCode: data.stock_code || '',
+            stockName: data.stock_name || '',
+            reportMd: data.report || '',
+            reportId: data.report_id || null,
+            score: data.score,
+            decision: data.decision,
+          }
+          localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(cache))
+        } catch (_) {}
+      }
+      /* 飞书自动推送（仅投研报告模式，且用户开启了自动推送开关） */
+      if (mode === 'invest' && data.report_id) {
+        try {
+          const autoPush = localStorage.getItem('stock_settings_feishu_push')
+          if (autoPush === 'true') {
+            await this.pushToFeishu(data.report_id)
+          }
+        } catch (_) {}
+      }
+      this.showToast(mode === 'data' ? '数据报告生成完成' : '投研报告生成完成')
+    },
+
+    _onSseError(err) {
+      this.sseGenerating = false
+      this.showToast('生成失败: ' + (err.message || '网络错误'))
+    },
+
+    /* 从 localStorage 恢复公司画像缓存（页面刷新/重新进入时调用） */
+    restoreCachedProfile() {
+      try {
+        const raw = localStorage.getItem(PROFILE_CACHE_KEY)
+        if (!raw) return false
+        const cache = JSON.parse(raw)
+        if (!cache.reportMd) return false
+        this.sseReportMd = cache.reportMd
+        this.sseReportMode = 'invest'
+        this.sseReportId = cache.reportId || null
+        if (cache.score !== undefined) {
+          this.analyzeResult = {
+            report: {
+              stock_name: cache.stockName || '',
+              stock_code: cache.stockCode || '',
+              score: cache.score,
+              decision: cache.decision || '',
+              summary: '',
+            },
+            report_id: cache.reportId || null,
+            message: '',
+          }
+        }
+        return true
+      } catch (_) {
+        return false
+      }
+    },
+
     /* ── 报告 ── */
     async fetchDashboardReports() {
       this.loading = true
@@ -92,10 +233,15 @@ export const useStockStore = defineStore('stock', {
       }
     },
 
-    async fetchHistoryReports(page = 1, pageSize = 10) {
+    async fetchHistoryReports(page = 1, pageSize = 8, filters = {}) {
       this.loading = true
       try {
-        const res = await api.getStockReports({ page, page_size: pageSize })
+        const params = { page, page_size: pageSize }
+        if (filters.search) params.search = filters.search
+        if (filters.dateFrom) params.date_from = filters.dateFrom
+        if (filters.dateTo) params.date_to = filters.dateTo
+        if (filters.decision) params.decision = filters.decision
+        const res = await api.getStockReports(params)
         if (res.code === 0) {
           this.historyReports = res.data.items
           this.historyReportsTotal = res.data.total
@@ -148,21 +294,33 @@ export const useStockStore = defineStore('stock', {
     },
 
     async deleteWatchlist(stockCode) {
-      const res = await api.deleteStockWatchlist(stockCode)
-      if (res.code === 0) {
-        this.showToast(res.message)
-        await this.fetchWatchlist()
+      try {
+        const res = await api.deleteStockWatchlist(stockCode)
+        if (res.code === 0) {
+          this.showToast(res.message)
+          await this.fetchWatchlist()
+        } else {
+          this.showToast(res.message || '删除失败')
+        }
+        return res
+      } catch (e) {
+        this.showToast('删除失败: ' + (e.message || '网络错误'))
       }
-      return res
     },
 
     async updateWatchlist(stockCode, data) {
-      const res = await api.updateStockWatchlist(stockCode, data)
-      if (res.code === 0) {
-        this.showToast(res.message)
-        await this.fetchWatchlist()
+      try {
+        const res = await api.updateStockWatchlist(stockCode, data)
+        if (res.code === 0) {
+          this.showToast(res.message)
+          await this.fetchWatchlist()
+        } else {
+          this.showToast(res.message || '更新失败')
+        }
+        return res
+      } catch (e) {
+        this.showToast('更新失败: ' + (e.message || '网络错误'))
       }
-      return res
     },
 
     /* ── 自选股分析 ── */
@@ -177,8 +335,8 @@ export const useStockStore = defineStore('stock', {
         }
         this.analyzeTaskId = res.task_id
 
-        // 轮询结果：每 3s 一次，最多 20 次（60s）
-        for (let i = 0; i < 20; i++) {
+        // 轮询结果：每 3s 一次，最多 120 次（360s，多只股票分析耗时更长）
+        for (let i = 0; i < 120; i++) {
           await new Promise(r => setTimeout(r, 3000))
           try {
             const result = await api.getStockAnalyzeResult(this.analyzeTaskId)

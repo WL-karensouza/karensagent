@@ -16,7 +16,8 @@ def _load_env(path=None):
                 continue
             key, _, value = line.partition("=")
             if key and value:
-                os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+                # 使用直接赋值而非 setdefault，确保 .env 优先于系统环境变量
+                os.environ[key.strip()] = value.strip().strip("\"'")
 
 
 _load_env()

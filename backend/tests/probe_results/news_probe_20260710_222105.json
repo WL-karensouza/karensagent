@@ -1,0 +1,63 @@
+{
+  "688981.SH": {
+    "search_news": {
+      "ok": true,
+      "entries": 0,
+      "answer": "",
+      "params": {
+        "query": "中芯国际 688981.SH 半导体芯片",
+        "time_start": "2026-06-10",
+        "time_end": "2026-07-10",
+        "size": 10
+      }
+    },
+    "search_notice": {
+      "ok": true,
+      "entries": 0,
+      "answer": "",
+      "params": {
+        "query": "中芯国际 688981.SH 公告",
+        "time_start": "2026-04-10",
+        "time_end": "2026-07-10",
+        "size": 10
+      }
+    },
+    "search_trending_news": {
+      "ok": false,
+      "error": {
+        "message": "Tool not allowed: search_trending_news",
+        "code": -32002
+      },
+      "params": {
+        "keyword": "半导体",
+        "industry_name": "电子",
+        "time_scope": "近7天",
+        "size": 10
+      }
+    }
+  },
+  "002371.SZ": {
+    "search_news": {
+      "ok": true,
+      "entries": 0,
+      "answer": "",
+      "params": {
+        "query": "北方华创 002371.SZ 半导体芯片",
+        "time_start": "2026-06-10",
+        "time_end": "2026-07-10",
+        "size": 10
+      }
+    },
+    "search_notice": {
+      "ok": true,
+      "entries": 0,
+      "answer": "",
+      "params": {
+        "query": "北方华创 002371.SZ 公告",
+        "time_start": "2026-04-10",
+        "time_end": "2026-07-10",
+        "size": 10
+      }
+    }
+  }
+}

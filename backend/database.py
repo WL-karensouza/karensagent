@@ -429,6 +429,16 @@ def get_dashboard_stats():
 # 股票分析报告
 # ═══════════════════════════════════════════
 
+def _extract_summary(report: dict) -> str:
+    """从报告 JSON 中提取摘要文本，兼容新旧两种格式"""
+    # 新格式（9模块）：从模块1提取 rating_sentence
+    m1 = report.get("module_1_核心结论", {})
+    if m1 and m1.get("rating_sentence"):
+        return m1["rating_sentence"]
+    # 旧格式兼容：直接取 summary 字段
+    return report.get("summary", "")
+
+
 def save_stock_report(stock_code: str, stock_name: str, report: dict,
                       markdown: str = "", token_used: int = 0) -> int:
     """保存个股分析报告，返回报告 ID"""
@@ -442,7 +452,7 @@ def save_stock_report(stock_code: str, stock_name: str, report: dict,
             stock_name=stock_name,
             score=report.get("score", 0),
             decision=report.get("decision", ""),
-            summary=report.get("summary", ""),
+            summary=_extract_summary(report),
             report_json=json.dumps(report, ensure_ascii=False),
             markdown=markdown,
             token_used=token_used,
@@ -488,17 +498,40 @@ def get_latest_report(stock_code: str) -> dict | None:
         db.close()
 
 
-def get_stock_reports(page: int = 1, page_size: int = 10) -> tuple[list, int]:
-    """分页获取报告列表（按创建时间倒序）"""
+def get_stock_reports(
+    page: int = 1,
+    page_size: int = 10,
+    search: str = "",
+    date_from: str = "",
+    date_to: str = "",
+    decision: str = "",
+) -> tuple[list, int]:
+    """分页获取报告列表（按创建时间倒序，支持筛选）"""
     from models import StockReport
 
     db = SessionLocal()
     try:
         offset = (page - 1) * page_size
-        total = db.query(func.count(StockReport.id)).scalar() or 0
+        query = db.query(StockReport)
+
+        if search:
+            query = query.filter(
+                StockReport.stock_code.like(f"%{search}%")
+                | StockReport.stock_name.like(f"%{search}%")
+            )
+        if date_from:
+            query = query.filter(
+                StockReport.created_at >= datetime.strptime(date_from, "%Y-%m-%d")
+            )
+        if date_to:
+            next_day = datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1)
+            query = query.filter(StockReport.created_at < next_day)
+        if decision:
+            query = query.filter(StockReport.decision.like(f"%{decision}%"))
+
+        total = query.count()
         rows = (
-            db.query(StockReport)
-            .order_by(StockReport.created_at.desc())
+            query.order_by(StockReport.created_at.desc())
             .offset(offset)
             .limit(page_size)
             .all()
