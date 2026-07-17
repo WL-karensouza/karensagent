@@ -334,12 +334,13 @@ function onPointerUp(e) {
 </template>
 
 <style scoped>
+
+
 /* ═══════════════════════════════════════════════
    精密纸媒交易台 — Dashboard 方案 B
    方向：高端金融印刷品 + 实体交易台精密感
    记忆点：数据像印在厚纸上的油墨，按钮像实体按键
    ═══════════════════════════════════════════════ */
-
 .dashboard {
   --paper-bg: #ffffff;
   --paper-card: #ffffff;
@@ -372,6 +373,7 @@ function onPointerUp(e) {
   padding: 8px 40px 60px;
   color: var(--ink-primary);
 }
+
 
 /* ── 头版搜索区 ── */
 .masthead {
@@ -408,6 +410,7 @@ function onPointerUp(e) {
   margin-bottom: 12px;
   letter-spacing: 0.08em;
 }
+
 
 /* 搜索框 */
 .search-desk {
@@ -452,6 +455,7 @@ function onPointerUp(e) {
   color: var(--ink-disabled);
 }
 
+
 /* 按钮 */
 .btn {
   display: inline-flex;
@@ -467,26 +471,6 @@ function onPointerUp(e) {
   font-family: inherit;
   white-space: nowrap;
 }
-.btn-primary {
-  background: var(--dash-accent);
-  color: #fff;
-  box-shadow: var(--dash-shadow-btn);
-}
-.btn-primary:hover {
-  background: var(--dash-accent-hover);
-  transform: translateY(-1px);
-}
-.btn-primary:active {
-  transform: translateY(0);
-  box-shadow: var(--dash-shadow-btn-active);
-}
-.btn-primary:disabled {
-  background: var(--paper-muted);
-  color: var(--ink-tertiary);
-  border-color: var(--dash-border);
-  cursor: not-allowed;
-  transform: none;
-}
 .btn-report {
   background: var(--dash-green);
   color: #fff;
@@ -496,6 +480,7 @@ function onPointerUp(e) {
   background: #14532d;
   transform: translateY(-1px);
 }
+
 
 /* 进度条 */
 .progress-line {
@@ -519,246 +504,6 @@ function onPointerUp(e) {
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── 三栏主布局 ── */
-.desk-grid {
-  display: grid;
-  grid-template-columns: 180px 1fr;
-  gap: 28px;
-  align-items: start;
-}
-
-/* 左侧维度目录 */
-.dimension-toc h3 {
-  font-size: 0.7rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--ink-tertiary);
-  margin-bottom: 14px;
-}
-.toc-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.toc-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: var(--dash-radius-md);
-  cursor: pointer;
-  transition: all 0.15s ease;
-  border: 1px solid transparent;
-}
-.toc-item:hover {
-  background: var(--paper-muted);
-}
-.toc-item.active {
-  background: var(--paper-card);
-  border-color: var(--dash-border);
-  box-shadow: var(--dash-shadow-sm);
-}
-.toc-num {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.7rem;
-  color: var(--ink-tertiary);
-  min-width: 18px;
-}
-.toc-item.active .toc-num {
-  color: var(--dash-accent);
-}
-.toc-label {
-  font-size: 0.88rem;
-  font-weight: 500;
-}
-.toc-status {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--dash-green);
-  margin-left: auto;
-}
-
-/* 中间维度面板 */
-.dimension-stage {
-  background: var(--paper-card);
-  border: 1px solid var(--dash-border);
-  border-radius: var(--dash-radius-lg);
-  min-height: 520px;
-  box-shadow: var(--dash-shadow-sm);
-  overflow: hidden;
-}
-.stage-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 22px 26px;
-  border-bottom: 1px solid var(--dash-border-light);
-}
-.stage-title h2 {
-  font-family: 'Noto Serif SC', 'STSong', 'SimSun', serif;
-  font-size: 1.4rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-.stock-sub {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.78rem;
-  color: var(--ink-tertiary);
-  margin-top: 2px;
-}
-.stage-badge {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.68rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 4px 10px;
-  border-radius: var(--dash-radius-sm);
-}
-.badge-ok {
-  background: var(--dash-green-soft);
-  color: var(--dash-green);
-}
-.badge-missing {
-  background: var(--dash-red-soft);
-  color: var(--dash-red);
-}
-.stage-body {
-  padding: 26px;
-}
-
-/* 数据网格 */
-.metric-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1px;
-  background: var(--dash-border-light);
-  border: 1px solid var(--dash-border-light);
-  border-radius: var(--dash-radius-sm);
-  overflow: hidden;
-}
-.metric-cell {
-  background: var(--paper-card);
-  padding: 18px;
-  transition: background 0.15s ease;
-}
-.metric-cell:hover {
-  background: var(--paper-muted);
-}
-.metric-label {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-tertiary);
-  margin-bottom: 6px;
-}
-.metric-value {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 1.5rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-}
-.metric-value.up { color: var(--dash-green); }
-.metric-value.down { color: var(--dash-red); }
-.metric-unit {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--ink-tertiary);
-}
-
-/* 市场环境 — 指数卡片 */
-.env-index-card {
-  background: var(--paper-card);
-  border: 1px solid var(--dash-border-light);
-  border-radius: var(--dash-radius-sm);
-  padding: 18px;
-  margin-bottom: 14px;
-}
-.env-index-name {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.85rem;
-  font-weight: 700;
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--dash-border-light);
-}
-.env-index-code {
-  font-weight: 400;
-  color: var(--ink-tertiary);
-  margin-left: 8px;
-}
-
-/* 财务分区 */
-.finance-report-date {
-  font-size: 0.85rem;
-  color: var(--ink-secondary);
-  margin-bottom: 16px;
-  padding: 8px 12px;
-  background: var(--paper-muted);
-  border-radius: var(--dash-radius-sm);
-  font-family: 'JetBrains Mono', monospace;
-}
-.finance-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
-}
-.finance-block h4 {
-  font-size: 0.75rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-secondary);
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--dash-border);
-  margin-bottom: 10px;
-}
-.finance-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 7px 0;
-  font-size: 0.85rem;
-  border-bottom: 1px dashed var(--dash-border-light);
-}
-.finance-row:last-child {
-  border-bottom: none;
-}
-.finance-row .label {
-  color: var(--ink-tertiary);
-}
-.finance-row .value {
-  font-family: 'JetBrains Mono', monospace;
-  font-weight: 600;
-}
-
-/* 新闻列表 */
-.news-list {
-  list-style: none;
-}
-.news-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--dash-border-light);
-  transition: background 0.15s ease;
-}
-.news-item:hover {
-  background: var(--paper-muted);
-  margin: 0 -12px;
-  padding: 14px 12px;
-  border-radius: var(--dash-radius-sm);
-}
-.news-title {
-  font-size: 0.92rem;
-  font-weight: 500;
-  line-height: 1.5;
-}
 
 /* ── 底部自选股 ── */
 .watchlist-bottom {
@@ -856,9 +601,6 @@ function onPointerUp(e) {
   gap: 18px;
   margin-top: 48px;
 }
-.watchlist-nav.hidden {
-  display: none;
-}
 .watchlist-arrow {
   width: 30px;
   height: 30px;
@@ -912,6 +654,7 @@ function onPointerUp(e) {
 .watchlist-dot.active {
   background: #1a1816;
 }
+
 
 /* ── 最近报告 ── */
 .reports-section {
@@ -988,95 +731,9 @@ function onPointerUp(e) {
 .side-link:hover {
   color: var(--dash-accent-hover);
 }
-
-/* 维度内容（信号标签 + 洞察文本） */
-.dimension-content {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* 信号标签 */
-.signal-tag {
-  display: inline-block;
-  align-self: flex-start;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 4px 12px;
-  border-radius: var(--dash-radius-sm);
-}
-.signal-positive {
-  background: var(--dash-green-soft);
-  color: var(--dash-green);
-}
-.signal-neutral {
-  background: #fef3c7;
-  color: #92400e;
-}
-.signal-negative {
-  background: var(--dash-red-soft);
-  color: var(--dash-red);
-}
-
-/* 洞察文本 */
-.dimension-insight {
-  font-size: 0.92rem;
-  line-height: 1.85;
-  color: var(--ink-primary);
-  white-space: pre-wrap;
-}
-
-/* 消息面主题标签 */
-.key-themes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.theme-chip {
-  display: inline-block;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.68rem;
-  color: var(--ink-secondary);
-  background: var(--paper-muted);
-  padding: 4px 10px;
-  border-radius: var(--dash-radius-sm);
-  border: 1px solid var(--dash-border-light);
-}
-
-/* 风险列表 */
-.risk-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.risk-item {
-  font-size: 0.88rem;
-  color: var(--dash-red);
-  background: var(--dash-red-soft);
-  padding: 10px 14px;
-  border-radius: var(--dash-radius-sm);
-  border-left: 3px solid var(--dash-red);
-  line-height: 1.5;
-}
-
-/* 维度切换动画 */
-.stage-panel {
-  animation: fadeIn 0.35s var(--dash-ease-out);
-}
 @keyframes fadeIn {
   from { opacity: 0; transform: translateX(8px); }
   to { opacity: 1; transform: translateX(0); }
-}
-
-/* 响应式 */
-@media (max-width: 1100px) {
-  .desk-grid {
-    grid-template-columns: 160px 1fr;
-  }
 }
 @media (max-width: 820px) {
   .masthead {
@@ -1084,24 +741,6 @@ function onPointerUp(e) {
   }
   .search-desk {
     min-width: auto;
-  }
-  .desk-grid {
-    grid-template-columns: 1fr;
-  }
-  .dimension-toc {
-    position: static;
-    display: flex;
-    gap: 8px;
-    overflow-x: auto;
-  }
-  .toc-list {
-    flex-direction: row;
-  }
-  .toc-item {
-    white-space: nowrap;
-  }
-  .metric-grid {
-    grid-template-columns: repeat(2, 1fr);
   }
   .watchlist-col {
     flex: 0 0 100%;
@@ -1130,6 +769,7 @@ function onPointerUp(e) {
     padding-right: 0;
   }
 }
+
 
 /* ── SSE 进度圆点 ── */
 .progress-stage-label {
@@ -1168,133 +808,6 @@ function onPointerUp(e) {
   color: var(--dash-accent);
 }
 
-/* ── 报告布局：左侧 Tab + 右侧散文内容 ── */
-.report-layout {
-  display: grid;
-  grid-template-columns: 200px 1fr;
-  gap: 0;
-  border: 1px solid var(--dash-border);
-  border-radius: var(--dash-radius-lg);
-  overflow: hidden;
-  box-shadow: var(--dash-shadow-sm);
-  background: var(--paper-card);
-}
-
-/* 左侧维度目录（覆盖默认 toc 样式） */
-.report-layout .dimension-toc {
-  border-right: 1px solid var(--dash-border-light);
-  padding: 12px 0;
-  background: var(--paper-muted);
-}
-.report-layout .dimension-toc .toc-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  border: none;
-  border-radius: 0;
-  border-left: 2px solid transparent;
-}
-.report-layout .dimension-toc .toc-item:hover {
-  background: rgba(0,0,0,0.03);
-}
-.report-layout .dimension-toc .toc-item.active {
-  background: var(--paper-card);
-  border-left-color: var(--dash-accent);
-  box-shadow: none;
-}
-.toc-icon {
-  font-size: 1rem;
-  width: 22px;
-  text-align: center;
-  flex-shrink: 0;
-}
-.toc-label {
-  font-size: 0.83rem;
-  font-weight: 500;
-  color: var(--ink-secondary);
-}
-.toc-item.active .toc-label {
-  color: var(--dash-accent);
-  font-weight: 600;
-}
-.toc-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--dash-border-light);
-  margin-left: auto;
-  flex-shrink: 0;
-}
-.toc-dot-ok {
-  background: var(--dash-green);
-}
-.toc-dot-err {
-  background: var(--dash-red);
-}
-
-/* 右侧维度面板 */
-.report-layout .dimension-stage {
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-  min-height: 440px;
-  display: flex;
-  flex-direction: column;
-}
-.stage-icon {
-  font-size: 1.3rem;
-  margin-right: 8px;
-}
-.stage-title {
-  display: flex;
-  align-items: center;
-}
-.stage-title h2 {
-  font-family: 'Noto Serif SC', 'STSong', 'SimSun', serif;
-  font-size: 1.2rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  margin: 0;
-}
-.stage-body {
-  flex: 1;
-  padding: 24px 28px;
-  overflow-y: auto;
-}
-
-/* 散文内容区域 */
-.dimension-prose {
-  font-family: 'Noto Serif SC', 'STSong', 'SimSun', serif;
-  color: var(--ink-primary);
-  line-height: 1.9;
-}
-
-/* 响应式：报告布局 */
-@media (max-width: 820px) {
-  .report-layout {
-    grid-template-columns: 1fr;
-  }
-  .report-layout .dimension-toc {
-    display: flex;
-    overflow-x: auto;
-    border-right: none;
-    border-bottom: 1px solid var(--dash-border-light);
-    padding: 8px;
-  }
-  .report-layout .dimension-toc .toc-item {
-    white-space: nowrap;
-    padding: 8px 12px;
-    border-left: none;
-    border-bottom: 2px solid transparent;
-  }
-  .report-layout .dimension-toc .toc-item.active {
-    border-left-color: transparent;
-    border-bottom-color: var(--dash-accent);
-  }
-}
 
 /* ── Markdown 报告内容样式 ── */
 .markdown-body { line-height: 1.8; color: var(--text-secondary, #6b6560); }
