@@ -330,6 +330,7 @@ function onPointerUp(e) {
     <!-- ═══ 最近分析报告 ═══ -->
     <section v-if="store.dashboardReports.length > 0" class="reports-section">
       <div class="reports-container">
+        <video class="reports-video" src="/Bike.mp4" autoplay loop muted playsinline></video>
         <h2 class="reports-title">最近分析报告</h2>
         <div class="reports-steps">
           <div v-for="(r, idx) in store.dashboardReports" :key="r.id">
@@ -705,6 +706,15 @@ function onPointerUp(e) {
   max-width: 760px;
   margin: 0 auto;
   padding: 0 24px;
+}
+/* 报告区域顶部视频 */
+.reports-video {
+  display: block;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto 48px auto;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.08);
 }
 .reports-title {
   font-family: 'Noto Serif SC', 'STSong', 'SimSun', serif;
