@@ -69,6 +69,10 @@ export const getStockReportDetail = (id) =>
 export const getStockWatchlist = () =>
   api.get('/stock/watchlist')
 
+/* 自选股各自最新报告摘要 */
+export const getWatchlistReports = () =>
+  api.get('/stock/watchlist/reports')
+
 export const addStockWatchlist = (data) =>
   api.post('/stock/watchlist', data)
 

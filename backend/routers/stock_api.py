@@ -287,6 +287,29 @@ def update_watchlist_item(stock_code: str, item: WatchlistUpdate):
     return {"code": 0, "message": f"已更新 [{stock_code}]"}
 
 
+@router.get("/watchlist/reports")
+def watchlist_reports():
+    """获取自选股各自的最新报告摘要（score/decision/时间）"""
+    from database import get_watchlist, get_latest_report
+
+    items = get_watchlist()
+    result = {}
+    for item in items:
+        code = item.get("stock_code", "")
+        if not code:
+            continue
+        report = get_latest_report(code)
+        if report:
+            result[code] = {
+                "score": report.get("score", 0),
+                "decision": report.get("decision", ""),
+                "created_at": report.get("created_at", ""),
+            }
+        else:
+            result[code] = None
+    return {"code": 0, "data": result}
+
+
 @router.post("/reports/{report_id}/push")
 def push_report(report_id: int):
     """推送指定报告到飞书"""

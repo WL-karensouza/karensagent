@@ -15,6 +15,7 @@ export const useStockStore = defineStore('stock', {
 
     /* 自选股 */
     watchlist: [],
+    watchlistReports: {},   // { code: { score, decision, created_at } | null }
 
     /* 分析状态 */
     analyzing: false,
@@ -147,6 +148,8 @@ export const useStockStore = defineStore('stock', {
       this.sseReportMd = data.report || ''
       this.sseSections = data.sections || {}
       this.sseReportId = data.report_id || null
+      /* 报告生成后刷新自选股报告摘要 */
+      this.fetchWatchlistReports().catch(() => {})
       if (mode === 'invest' && data.score !== undefined) {
         this.analyzeResult = {
           report: {
@@ -280,6 +283,14 @@ export const useStockStore = defineStore('stock', {
       } catch (e) {
         this.showToast('获取自选股失败')
       }
+    },
+
+    /* 获取自选股各自最新报告摘要 */
+    async fetchWatchlistReports() {
+      try {
+        const res = await api.getWatchlistReports()
+        if (res.code === 0) this.watchlistReports = res.data
+      } catch (_) { /* 静默失败 */ }
     },
 
     async addWatchlist(data) {

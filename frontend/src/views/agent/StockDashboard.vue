@@ -63,11 +63,20 @@ const currentStageLabel = computed(() => {
   return running ? running.label : '...'
 })
 
+/* ── 自选股 + 最新报告合并视图 ── */
+const enrichedWatchlist = computed(() => {
+  return store.watchlist.map(item => ({
+    ...item,
+    latestReport: store.watchlistReports[item.stock_code] || null,
+  }))
+})
+
 /* ── 10 维度 Tab 定义（与后端 DIMENSIONS 对齐） ── */
 onMounted(() => {
   store.restoreCachedProfile()
   store.fetchWatchlist()
   store.fetchDashboardReports()
+  store.fetchWatchlistReports()
 })
 
 /* ── 输入校验 ── */
@@ -272,15 +281,29 @@ function onPointerUp(e) {
         @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointerup="onPointerUp" @pointerleave="onPointerUp">
         <div class="watchlist-track" ref="trackEl" :style="{ transform: `translateX(-${currentSlide * (100 / VISIBLE)}%)` }">
           <div
-            v-for="(item, idx) in store.watchlist"
+            v-for="(item, idx) in enrichedWatchlist"
             :key="item.stock_code"
             class="watchlist-col"
           >
             <DividerLine v-if="idx > 0" vertical />
             <div class="watchlist-code">{{ item.stock_code }}</div>
             <div class="watchlist-name">{{ item.stock_name || item.stock_code }}</div>
-            <div class="watchlist-price">—</div>
-            <span class="watchlist-change">—</span>
+            <!-- 有报告：显示评分 + 判断 + 时间 -->
+            <template v-if="item.latestReport">
+              <div class="watchlist-price" :style="{ color: scoreColor(item.latestReport.score) }">{{ item.latestReport.score }} 分</div>
+              <span class="watchlist-change" :class="{
+                'change-up': item.latestReport.decision === '看多',
+                'change-flat': item.latestReport.decision === '震荡',
+                'change-down': item.latestReport.decision === '看空',
+              }">{{ decisionBadge(item.latestReport.decision) }}</span>
+              <div class="watchlist-report-time">{{ item.latestReport.created_at?.slice(0, 10) }}</div>
+            </template>
+            <!-- 无报告：留空 -->
+            <template v-else>
+              <div class="watchlist-price" style="color: var(--ink-disabled)">—</div>
+              <span class="watchlist-change watchlist-change-empty">暂无报告</span>
+              <div class="watchlist-report-time"></div>
+            </template>
             <button class="watchlist-analyze-btn" @click="stockCode = item.stock_code; handleInvestReport()">投研报告</button>
           </div>
         </div>
@@ -573,8 +596,24 @@ function onPointerUp(e) {
   font-weight: 600;
   padding: 5px 12px;
   border-radius: var(--dash-radius-sm);
-  margin-bottom: 72px;
+  margin-bottom: 8px;
   align-self: flex-start;
+}
+/* 看多/震荡/看空 配色 */
+.watchlist-change.change-up    { background: var(--dash-green-soft); color: var(--dash-green); }
+.watchlist-change.change-flat  { background: var(--paper-muted); color: var(--ink-secondary); }
+.watchlist-change.change-down  { background: var(--dash-red-soft); color: var(--dash-red); }
+.watchlist-change-empty {
+  background: transparent;
+  color: var(--ink-disabled);
+  font-weight: 400;
+}
+/* 报告时间 */
+.watchlist-report-time {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.72rem;
+  color: var(--ink-tertiary);
+  margin-bottom: 20px;
 }
 .watchlist-analyze-btn {
   width: 100%;
