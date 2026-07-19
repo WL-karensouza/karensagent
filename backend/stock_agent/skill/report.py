@@ -5,6 +5,7 @@
 import asyncio
 import json
 import re
+import requests
 import time
 from datetime import datetime, timedelta
 from . import call_skill, extract_text, extract_raw
@@ -401,6 +402,38 @@ def _name_from_pipe_table(text: str) -> str | None:
     return fallback
 
 
+def _get_name_eastmoney(stock_code: str) -> str | None:
+    """东方财富 HTTP 直调查询公司名称，A股+港股通用
+
+    作为 iFinD 正则提取失败时的兜底方案。
+    secid 规则：沪市 1.{code}，深市 0.{code}，港股 116.{zfill(5)}
+    """
+    code = stock_code.strip()
+    # 港股 secid：116. + 零填充到5位
+    if code.endswith(".HK"):
+        pure = code.replace(".HK", "")
+        secid = f"116.{pure.zfill(5)}"
+    else:
+        # A股：清掉 .SH/.SZ 后缀，按首字判断市场
+        pure = code.replace(".SH", "").replace(".SZ", "")
+        market = "1" if pure[0] in ("6", "5") else "0"
+        secid = f"{market}.{pure}"
+
+    try:
+        r = requests.get(
+            "https://push2.eastmoney.com/api/qt/stock/get",
+            params={"fltt": "2", "invt": "2", "fields": "f57,f58", "secid": secid},
+            timeout=5,
+        )
+        data = r.json()
+        name = data.get("data", {}).get("f58", "")
+        if name and len(name) >= 2:
+            return name
+    except Exception:
+        pass
+    return None
+
+
 def _extract_stock_name(raw, stock_code: str) -> str:
     """从 summary 维度（基本信息与估值）的 raw 数据中提取公司全称
 
@@ -432,6 +465,11 @@ def _extract_stock_name(raw, stock_code: str) -> str:
     name = _name_from_pipe_table(text)
     if name and name != stock_code:
         return name
+
+    # 以上全部失败 → 东方财富 HTTP 兜底
+    fallback = _get_name_eastmoney(stock_code)
+    if fallback:
+        return fallback
 
     return stock_code
 
