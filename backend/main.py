@@ -85,8 +85,8 @@ def health_check():
         from stock_agent.skill import call_skill
         call_skill("stock", "stock_highfreq_quotes", {
             "symbols": "600519.SH",
-            "indicators": "latest",
-            "data_mode": "latest",
+            "indicators": "最新价",
+            "data_mode": "real_time",
         })
         ifind_ok = True
     except Exception:

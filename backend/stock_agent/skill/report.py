@@ -5,7 +5,12 @@
 import asyncio
 import json
 import re
-import requests
+
+from ..datasources.eastmoney import _get_name_eastmoney, _fetch_ohlcv_eastmoney
+from .indicators import (
+    _calc_ema, _calc_ma, _calc_macd, _calc_boll, _calc_rsi, _calc_kdj,
+    _last_valid,
+)
 import time
 from datetime import datetime, timedelta
 from . import call_skill, extract_text, extract_raw
@@ -85,13 +90,13 @@ def _build_params(dim: dict, stock_code: str) -> dict:
     key = dim["key"]
     tool = dim["tool"]
 
-    # 实时行情使用结构化参数
+    # 实时行情使用结构化参数（iFinD v1.3.0: data_mode 仅支持 real_time/highfreq）
     if tool == "stock_highfreq_quotes":
         suffix = _market_suffix(stock_code)
         return {
             "symbols": f"{stock_code}{suffix}",
-            "indicators": "latest,open,high,low,close,volume,amount,change,changePct,amplitude,avgPrice",
-            "data_mode": "latest",
+            "indicators": "最新价,开盘价,最高价,最低价,收盘价,涨跌幅,成交量,成交额,振幅,均价",
+            "data_mode": "real_time",
         }
 
     # 自然语言类工具 — 构造中文 query
@@ -101,8 +106,8 @@ def _build_params(dim: dict, stock_code: str) -> dict:
             f"总市值、流通市值、市盈率PE、市净率PB、估值水平"
         ),
         "performance": (
-            f"股票代码{stock_code}的近期行情走势，包括近1月/近3月/近6月/近1年"
-            f"的涨跌幅、区间收益、相对大盘表现"
+            f"{stock_code}{_market_suffix(stock_code)}近60个交易日的开盘价、收盘价、最高价、最低价、"
+            f"涨跌幅、换手率、成交量、成交额"
         ),
         "financials": (
             f"股票代码{stock_code}的最新财务数据，包括营业收入、净利润、扣非净利润、"
@@ -402,38 +407,6 @@ def _name_from_pipe_table(text: str) -> str | None:
     return fallback
 
 
-def _get_name_eastmoney(stock_code: str) -> str | None:
-    """东方财富 HTTP 直调查询公司名称，A股+港股通用
-
-    作为 iFinD 正则提取失败时的兜底方案。
-    secid 规则：沪市 1.{code}，深市 0.{code}，港股 116.{zfill(5)}
-    """
-    code = stock_code.strip()
-    # 港股 secid：116. + 零填充到5位
-    if code.endswith(".HK"):
-        pure = code.replace(".HK", "")
-        secid = f"116.{pure.zfill(5)}"
-    else:
-        # A股：清掉 .SH/.SZ 后缀，按首字判断市场
-        pure = code.replace(".SH", "").replace(".SZ", "")
-        market = "1" if pure[0] in ("6", "5") else "0"
-        secid = f"{market}.{pure}"
-
-    try:
-        r = requests.get(
-            "https://push2.eastmoney.com/api/qt/stock/get",
-            params={"fltt": "2", "invt": "2", "fields": "f57,f58", "secid": secid},
-            timeout=5,
-        )
-        data = r.json()
-        name = data.get("data", {}).get("f58", "")
-        if name and len(name) >= 2:
-            return name
-    except Exception:
-        pass
-    return None
-
-
 def _extract_stock_name(raw, stock_code: str) -> str:
     """从 summary 维度（基本信息与估值）的 raw 数据中提取公司全称
 
@@ -472,6 +445,220 @@ def _extract_stock_name(raw, stock_code: str) -> str:
         return fallback
 
     return stock_code
+
+
+# ═══════════════════════════════════════════
+# iFinD OHLCV 表格解析（兜底方案，东方财富获取失败时使用）
+# ═══════════════════════════════════════════
+
+def _parse_ohlcv_table(answer_text: str) -> dict | None:
+    """从 get_stock_performance 返回的 Markdown 管道表格中解析 OHLCV 数据
+
+    返回按时间升序排列的 dict（最早日期在前），格式：
+        {"dates": [...], "closes": [...], "highs": [...], "lows": [...],
+         "change_pcts": [...], "turnovers": [...]}
+    解析失败返回 None
+    """
+    lines = answer_text.strip().split('\n')
+
+    # 找表头行
+    header_idx = None
+    for i, line in enumerate(lines):
+        if line.startswith('|') and '证券代码' in line:
+            header_idx = i
+            break
+    if header_idx is None:
+        return None
+
+    headers = [h.strip() for h in lines[header_idx].strip('|').split('|')]
+    col_map = {}
+    for idx, h in enumerate(headers):
+        h_clean = h.replace('（', '(').replace('）', ')')
+        if '日期' in h:
+            col_map['date'] = idx
+        elif '开盘' in h:
+            col_map['open'] = idx
+        elif '收盘' in h:
+            col_map['close'] = idx
+        elif '最高' in h:
+            col_map['high'] = idx
+        elif '最低' in h:
+            col_map['low'] = idx
+        elif '涨跌幅' in h:
+            col_map['change_pct'] = idx
+        elif '换手率' in h:
+            col_map['turnover'] = idx
+
+    if 'close' not in col_map:
+        return None
+
+    # 解析数据行（从底向上保证升序）
+    rows = []
+    for line in lines[header_idx + 1:]:
+        line = line.strip()
+        if not line.startswith('|') or '---|---' in line:
+            continue
+        cells = [c.strip() for c in line.strip('|').split('|')]
+
+        def _cell(key):
+            idx = col_map.get(key)
+            if idx is None or idx >= len(cells):
+                return ''
+            return cells[idx]
+
+        # 过滤 iFinD 末尾的统计汇总行（无日期列或日期不是日期格式）
+        date_str = _cell('date')
+        if not date_str or not re.fullmatch(r'\d{8}', date_str):
+            continue
+
+        try:
+            close_val = float(_cell('close'))
+        except (ValueError, TypeError):
+            continue
+
+        row = {'date': date_str, 'close': close_val}
+        for key in ('open', 'high', 'low'):
+            try:
+                row[key] = float(_cell(key)) if _cell(key) else None
+            except (ValueError, TypeError):
+                row[key] = None
+        for key in ('change_pct', 'turnover'):
+            try:
+                row[key] = float(_cell(key)) if _cell(key) else None
+            except (ValueError, TypeError):
+                row[key] = None
+        rows.append(row)
+
+    if len(rows) < 5:
+        return None
+
+    # iFinD 返回的数据是倒序（最新在前），反转为升序（最早在前）
+    rows.reverse()
+
+    return {
+        'dates': [r['date'] for r in rows],
+        'closes': [r['close'] for r in rows],
+        'highs': [r.get('high') for r in rows],
+        'lows': [r.get('low') for r in rows],
+        'change_pcts': [r.get('change_pct') for r in rows],
+        'turnovers': [r.get('turnover') for r in rows],
+    }
+
+
+def _format_indicators_markdown(ohlcv: dict, indicators: dict) -> str:
+    """将技术指标格式化为 Markdown 表格"""
+    latest_close = ohlcv['closes'][-1]
+    lines = ["### 技术指标（自算，截至最近交易日）", ""]
+
+    # ── MA 均线 ──
+    lines.append("#### MA 均线")
+    lines.append("| 周期 | MA值 | 收盘价 | 偏离度 |")
+    lines.append("|------|------|--------|--------|")
+    for period, ma_seq in indicators['ma'].items():
+        ma_val = _last_valid(ma_seq)
+        if ma_val is not None:
+            deviation = (latest_close - ma_val) / ma_val * 100
+            lines.append(f"| MA{period} | {ma_val:.2f} | {latest_close:.2f} | {deviation:+.2f}% |")
+    lines.append("")
+
+    # ── MACD ──
+    lines.append("#### MACD（12/26/9）")
+    lines.append("| 指标 | 数值 |")
+    lines.append("|------|------|")
+    for label, key in [('DIF', 'dif'), ('DEA', 'dea'), ('柱值（BAR）', 'bar')]:
+        val = _last_valid(indicators['macd'][key])
+        if val is not None:
+            lines.append(f"| {label} | {val:.4f} |")
+    lines.append("")
+
+    # ── BOLL ──
+    lines.append("#### BOLL 布林线（20日, 2σ）")
+    lines.append("| 轨道 | 数值 |")
+    lines.append("|------|------|")
+    for label, key in [('上轨', 'upper'), ('中轨', 'middle'), ('下轨', 'lower')]:
+        val = _last_valid(indicators['boll'][key])
+        if val is not None:
+            lines.append(f"| {label} | {val:.2f} |")
+    # 带宽
+    upper_v = _last_valid(indicators['boll']['upper'])
+    lower_v = _last_valid(indicators['boll']['lower'])
+    if upper_v is not None and lower_v is not None:
+        lines.append(f"| 带宽（上-下） | {upper_v - lower_v:.2f} |")
+    lines.append("")
+
+    # ── RSI ──
+    lines.append("#### RSI 相对强弱")
+    lines.append("| 周期 | 数值 | 区域 |")
+    lines.append("|------|------|------|")
+    for period, rsi_seq in indicators['rsi'].items():
+        val = _last_valid(rsi_seq)
+        if val is not None:
+            zone = "超买 ⚠️" if val > 70 else ("超卖 ⚠️" if val < 30 else "中性")
+            lines.append(f"| RSI({period}) | {val:.2f} | {zone} |")
+    lines.append("")
+
+    # ── KDJ ──
+    lines.append("#### KDJ 随机指标（9日）")
+    lines.append("| 指标 | 数值 |")
+    lines.append("|------|------|")
+    for label, key in [('K', 'k'), ('D', 'd'), ('J', 'j')]:
+        val = _last_valid(indicators['kdj'][key])
+        if val is not None:
+            zone = "超买 ⚠️" if val > 80 else ("超卖 ⚠️" if val < 20 else "中性")
+            lines.append(f"| {label} | {val:.2f} | {zone} |")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
+def _enrich_performance(answer_text: str, stock_code: str = "") -> str:
+    """解析 OHLCV 数据并计算技术指标，返回增强后的 Markdown
+
+    优先使用东方财富前复权日K数据（与同花顺 APP 一致），
+    失败时 fallback 到 iFinD Markdown 表格解析。
+    两次尝试均失败时原样返回 answer_text，不中断报告生成。
+    """
+    ohlcv = None
+    source = "iFinD"
+
+    # 优先：东方财富免费 API（前复权，与同花顺 APP 日K 一致）
+    if stock_code:
+        ohlcv = _fetch_ohlcv_eastmoney(stock_code)
+        if ohlcv is not None:
+            source = "东方财富"
+
+    # 兜底：从 iFinD 返回的 Markdown 表格解析
+    if ohlcv is None:
+        ohlcv = _parse_ohlcv_table(answer_text)
+
+    if ohlcv is None:
+        return answer_text
+
+    closes = ohlcv['closes']
+    highs = ohlcv['highs']
+    lows = ohlcv['lows']
+
+    # 计算全部技术指标
+    indicators = {
+        'ma': {
+            5: _calc_ma(closes, 5),
+            10: _calc_ma(closes, 10),
+            20: _calc_ma(closes, 20),
+            30: _calc_ma(closes, 30),
+            60: _calc_ma(closes, 60),
+        },
+        'macd': _calc_macd(closes),
+        'boll': _calc_boll(closes),
+        'rsi': {
+            6: _calc_rsi(closes, 6),
+            12: _calc_rsi(closes, 12),
+            24: _calc_rsi(closes, 24),
+        },
+        'kdj': _calc_kdj(highs, lows, closes),
+    }
+
+    indicator_md = _format_indicators_markdown(ohlcv, indicators)
+    return answer_text + "\n\n" + indicator_md
 
 
 # ═══════════════════════════════════════════
@@ -523,6 +710,10 @@ async def generate_report_stream(stock_code: str, dimensions: list[str] | None =
 
             if text.startswith("[错误]") or text.startswith("[无数据]") or text.startswith("[权限不足"):
                 raise RuntimeError(text)
+
+            # performance 维度：基于 OHLCV 自行计算全部技术指标
+            if dim["key"] == "performance":
+                text = _enrich_performance(text, stock_code)
 
             report_parts.append(f"## {dim['label']}\n\n{text}")
             raws[dim["key"]] = raw
@@ -620,6 +811,10 @@ def generate_report_sync(stock_code: str, dimensions: list[str] | None = None) -
 
             if text.startswith("[错误]") or text.startswith("[无数据]") or text.startswith("[权限不足"):
                 raise RuntimeError(text)
+
+            # performance 维度：基于 OHLCV 自行计算全部技术指标
+            if dim["key"] == "performance":
+                text = _enrich_performance(text, stock_code)
 
             parts.append(f"## {dim['label']}\n\n{text}")
             raws[dim["key"]] = raw
