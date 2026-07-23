@@ -1,7 +1,10 @@
 """消息推送器 —— 飞书卡片"""
 
 import httpx
+from datetime import datetime
 from config import FEISHU_WEBHOOK_URL
+from github_agent.formatters.feishu import build_feishu_card
+from database import save_push_history, mark_news_pushed
 
 
 def send_feishu_card(card: dict) -> bool:
@@ -27,7 +30,6 @@ def send_feishu_card(card: dict) -> bool:
 
 def send_error_notification(title: str, detail: str) -> bool:
     """发送飞书错误通知卡片（红色标题，用于系统异常告警）"""
-    from datetime import datetime
 
     card = {
         "msg_type": "interactive",
@@ -59,8 +61,6 @@ def send_error_notification(title: str, detail: str) -> bool:
 def push_report(weekly_repos: list[dict], monthly_repos: list[dict],
                 news: list[dict], today: str) -> dict:
     """推送入口：飞书卡片 + 记录推送历史"""
-    from formatters.feishu import build_feishu_card
-    from database import save_push_history
 
     feishu_card = build_feishu_card(today, weekly_repos, monthly_repos, news)
     ok = send_feishu_card(feishu_card)
@@ -77,7 +77,6 @@ def push_report(weekly_repos: list[dict], monthly_repos: list[dict],
             status="sent",
         )
         # 标记已推送的 AI 资讯（方案 A：页面只显示推送过的）
-        from database import mark_news_pushed
         news_urls = [n.get("url", "") for n in news if n.get("url")]
         if news_urls:
             mark_news_pushed(news_urls, today)

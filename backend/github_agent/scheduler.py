@@ -2,7 +2,12 @@
 
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
-from config import PUSH_TIME
+from config import PUSH_TIME, WEEKLY_TOP_N, MONTHLY_TOP_N, NEWS_TOP_N
+from database import save_daily_trends, save_ai_news, get_trends_by_source, get_ai_news
+from github_agent.fetchers.github import fetch_all_trends
+from github_agent.fetchers.ai_news import fetch_hackernews, fetch_arxiv, fetch_paperswithcode
+from github_agent.filters.keyword import filter_repos, filter_news
+from github_agent.notifier import send_error_notification, push_report
 
 
 _scheduler = None
@@ -22,9 +27,6 @@ def get_scheduler() -> BackgroundScheduler:
 
 def _fetch_all_with_errors(today: str) -> dict:
     """逐源抓取，返回 {all_failed, sources, message}"""
-    from fetchers.github import fetch_all_trends
-    from fetchers.ai_news import fetch_hackernews, fetch_arxiv, fetch_paperswithcode
-    from database import save_daily_trends, save_ai_news
 
     result = {"all_failed": False, "sources": {}}
     all_failed_count = 0
@@ -120,7 +122,6 @@ def daily_fetch_and_push():
 
     if fetch_result["all_failed"]:
         print(f"[scheduler] ❌ {fetch_result['message']}")
-        from notifier import send_error_notification
         try:
             error_detail = "\n".join(
                 f"- {name}: {info.get('error', 'unknown')}"
@@ -141,9 +142,6 @@ def daily_fetch_and_push():
         print(f"[scheduler] ⚠️ {fetch_result['message']}")
 
     # ── 步骤 2: 过滤 ──
-    from filters.keyword import filter_repos, filter_news
-    from database import get_trends_by_source, get_ai_news
-    from config import WEEKLY_TOP_N, MONTHLY_TOP_N, NEWS_TOP_N
 
     print("[scheduler] ② 数据聚合...")
 
@@ -161,7 +159,6 @@ def daily_fetch_and_push():
 
     # ── 步骤 3: 推送 ──
     print("[scheduler] ③ 推送消息...")
-    from notifier import push_report, send_error_notification
     result = push_report(weekly_filtered, monthly_filtered, news_filtered, today)
 
     print(f"[scheduler] 推送结果: 飞书={result['feishu']}")

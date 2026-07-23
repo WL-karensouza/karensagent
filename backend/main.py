@@ -33,13 +33,13 @@ async def lifespan(app: FastAPI):
     print("[main] ✅ 数据库初始化完成")
 
     # 启动定时任务
-    from scheduler import start_scheduler
+    from github_agent.scheduler import start_scheduler
     start_scheduler()
 
     print("[main] ✅ 全部就绪")
     yield
     # 关闭
-    from scheduler import stop_scheduler
+    from github_agent.scheduler import stop_scheduler
     stop_scheduler()
     print("[main] 🛑 Karens Agent 已关闭")
 
@@ -61,10 +61,10 @@ app.add_middleware(
 )
 
 # ── API 路由注册 ──
-from routers.dashboard import router as dashboard_router
+from github_agent.routers.dashboard import router as dashboard_router
 from routers.history import router as history_router
-from routers.preview import router as preview_router
-from routers.trigger import router as trigger_router
+from github_agent.routers.preview import router as preview_router
+from github_agent.routers.trigger import router as trigger_router
 from routers.config_api import router as config_router
 from routers.stock_api import router as stock_router
 

@@ -3,7 +3,14 @@
 import uuid
 import time
 import threading
+from datetime import datetime
 from fastapi import APIRouter
+from config import WEEKLY_TOP_N, MONTHLY_TOP_N, NEWS_TOP_N
+from database import save_daily_trends, save_ai_news, get_trends_by_source, get_ai_news
+from github_agent.fetchers.github import fetch_all_trends
+from github_agent.fetchers.ai_news import fetch_hackernews, fetch_arxiv, fetch_paperswithcode
+from github_agent.filters.keyword import filter_repos, filter_news
+from github_agent.notifier import send_error_notification, push_report
 
 router = APIRouter(prefix="/api/trigger", tags=["trigger"])
 
@@ -43,10 +50,6 @@ def _create_task() -> str:
 
 def _run_fetch(task_id: str):
     """后台抓取 —— 逐源调用，逐个收集错误信息"""
-    from datetime import datetime
-    from fetchers.github import fetch_all_trends
-    from fetchers.ai_news import fetch_hackernews, fetch_arxiv, fetch_paperswithcode
-    from database import save_daily_trends, save_ai_news
 
     today = datetime.now().strftime("%Y-%m-%d")
     fetch_result = {"ok": True, "all_failed": False, "sources": {}}
@@ -132,11 +135,6 @@ def _run_fetch(task_id: str):
 
 def _run_push(task_id: str):
     """后台推送 —— 带异常包装，错误信息写入 task_result"""
-    from datetime import datetime
-    from filters.keyword import filter_repos, filter_news
-    from database import get_trends_by_source, get_ai_news
-    from notifier import push_report, send_error_notification
-    from config import WEEKLY_TOP_N, MONTHLY_TOP_N, NEWS_TOP_N
 
     today = datetime.now().strftime("%Y-%m-%d")
     push_result = {"ok": False, "error": None, "repo_count": 0, "news_count": 0}
@@ -188,7 +186,6 @@ def _run_push(task_id: str):
 
 def _run_full(task_id: str):
     """全流程：先抓取，按结果决定是否推送"""
-    from notifier import send_error_notification
 
     _run_fetch(task_id)
     fetch_result = _task_results[task_id].get("fetch", {})

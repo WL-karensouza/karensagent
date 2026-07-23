@@ -20,7 +20,7 @@ def test_database_init():
 
 def test_github_fetch():
     """测试 GitHub Trending 抓取"""
-    from fetchers.github import fetch_trending
+    from github_agent.fetchers.github import fetch_trending
     repos = fetch_trending(since="daily")
     assert isinstance(repos, list), "返回应为列表"
     if repos:
@@ -34,7 +34,7 @@ def test_github_fetch():
 
 def test_ai_news_fetch():
     """测试 AI 资讯抓取"""
-    from fetchers.ai_news import fetch_hackernews, fetch_arxiv
+    from github_agent.fetchers.ai_news import fetch_hackernews, fetch_arxiv
     hn = fetch_hackernews(limit=5)
     print(f"[OK] HN 抓取通过 — {len(hn)} 条 AI 相关")
     arxiv = fetch_arxiv(limit=5)
@@ -43,7 +43,7 @@ def test_ai_news_fetch():
 
 def test_keyword_filter():
     """测试关键词过滤（filter_news 布尔匹配）"""
-    from filters.keyword import filter_news, get_active_keywords
+    from github_agent.filters.keyword import filter_news, get_active_keywords
     keywords = get_active_keywords()
     # 构造一条会命中关键词的 AI 资讯
     news_items = [
@@ -61,7 +61,7 @@ def test_keyword_filter():
 def test_fetch_all_trends_no_daily():
     """fetch_all_trends 不应抓取 daily，只抓 weekly+monthly"""
     from unittest.mock import patch
-    from fetchers.github import fetch_all_trends
+    from github_agent.fetchers.github import fetch_all_trends
 
     # mock fetch_trending 返回固定数据，避免真实网络请求
     def mock_fetch(since="daily", language=""):
@@ -75,7 +75,7 @@ def test_fetch_all_trends_no_daily():
             "rank": 1,
         }]
 
-    with patch('fetchers.github.fetch_trending', side_effect=mock_fetch):
+    with patch('github_agent.fetchers.github.fetch_trending', side_effect=mock_fetch):
         result = fetch_all_trends(date="2026-07-02")
 
     sources = {r["source"] for r in result}
@@ -87,7 +87,7 @@ def test_fetch_all_trends_no_daily():
 
 def test_markdown_format():
     """测试 Markdown 格式化"""
-    from formatters.markdown import build_weekly_report
+    from github_agent.formatters.markdown import build_weekly_report
     repos = [
         {
             "repo_name": "test-org/test-repo",
@@ -117,9 +117,9 @@ def test_markdown_format():
 def test_github_http_error_raises():
     """GitHub 网络错误应该 raise，而不是静默返回 []"""
     import httpx
-    from fetchers.github import fetch_trending
+    from github_agent.fetchers.github import fetch_trending
 
-    with patch('fetchers.github.httpx.get') as mock_get:
+    with patch('github_agent.fetchers.github.httpx.get') as mock_get:
         mock_get.side_effect = httpx.ConnectError("Connection refused")
         try:
             fetch_trending(since="daily")
@@ -131,13 +131,13 @@ def test_github_http_error_raises():
 
 def test_github_parse_error_resilience():
     """HTML 解析失败（无 article）应返回 []，不 raise"""
-    from fetchers.github import fetch_trending
+    from github_agent.fetchers.github import fetch_trending
 
     mock_resp = MagicMock()
     mock_resp.text = "<html><body>空页面</body></html>"
     mock_resp.raise_for_status = MagicMock()
 
-    with patch('fetchers.github.httpx.get', return_value=mock_resp):
+    with patch('github_agent.fetchers.github.httpx.get', return_value=mock_resp):
         result = fetch_trending(since="daily")
         assert isinstance(result, list), "应返回列表"
         assert len(result) == 0, "空页面应返回空列表"
@@ -147,9 +147,9 @@ def test_github_parse_error_resilience():
 def test_hn_http_error_raises():
     """HN 网络错误应该 raise"""
     import httpx
-    from fetchers.ai_news import fetch_hackernews
+    from github_agent.fetchers.ai_news import fetch_hackernews
 
-    with patch('fetchers.ai_news.httpx.get') as mock_get:
+    with patch('github_agent.fetchers.ai_news.httpx.get') as mock_get:
         mock_get.side_effect = httpx.ConnectError("Connection refused")
         try:
             fetch_hackernews(limit=5)
@@ -161,9 +161,9 @@ def test_hn_http_error_raises():
 
 def test_arxiv_http_error_raises():
     """ArXiv 网络错误应该 raise"""
-    from fetchers.ai_news import fetch_arxiv
+    from github_agent.fetchers.ai_news import fetch_arxiv
 
-    with patch('fetchers.ai_news.feedparser.parse') as mock_parse:
+    with patch('github_agent.fetchers.ai_news.feedparser.parse') as mock_parse:
         mock_parse.side_effect = Exception("DNS 解析失败")
         try:
             fetch_arxiv(limit=5)

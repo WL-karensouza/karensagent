@@ -330,7 +330,7 @@ function onPointerUp(e) {
     <!-- ═══ 最近分析报告 ═══ -->
     <section v-if="store.dashboardReports.length > 0" class="reports-section">
       <div class="reports-container">
-        <video class="reports-video" src="/Bike.mp4" autoplay loop muted playsinline></video>
+        <!-- <video class="reports-video" src="/Bike.mp4" autoplay loop muted playsinline></video> -->
         <h2 class="reports-title">最近分析报告</h2>
         <div class="reports-steps">
           <div v-for="(r, idx) in store.dashboardReports" :key="r.id">
