@@ -16,7 +16,6 @@ def _load_env(path=None):
                 continue
             key, _, value = line.partition("=")
             if key and value:
-                # 使用直接赋值而非 setdefault，确保 .env 优先于系统环境变量
                 os.environ[key.strip()] = value.strip().strip("\"'")
 
 
@@ -25,8 +24,6 @@ _load_env()
 # ── 数据库（本地开发默认 SQLite，生产环境设 MySQL） ──
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    # 本地开发：sqlite:///karens_agent.db
-    # 生产环境：mysql+pymysql://root:password@localhost:3306/karens_agent
     "sqlite:///karens_agent.db",
 )
 
@@ -36,28 +33,13 @@ FEISHU_WEBHOOK_URL = os.getenv("FEISHU_WEBHOOK_URL", "")
 # ── Claude API（后期启用） ──
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
-# ── 关键词配置（纯关键词列表，无权重，用于 AI 资讯过滤） ──
-DEFAULT_KEYWORDS = [
-    "agent", "llm", "mcp", "claude", "langgraph", "autogen",
-    "crewai", "tool-use", "function-calling", "multi-agent",
-    "rag", "workflow", "openai", "skill", "chain-of-thought",
-    "reasoning", "fine-tuning", "alignment", "transformer",
-    "deepseek", "gemini", "llama", "embedding", "retrieval",
-]
-
 # ── 推送配置 ──
 PUSH_TIME = os.getenv("PUSH_TIME", "09:00")  # 每天推送时间
-MARKET_REPORT_TIME = os.getenv("MARKET_REPORT_TIME", "15:30")  # 每日大盘分析时间
-WEEKLY_TOP_N = int(os.getenv("WEEKLY_TOP_N", "10"))  # 周榜数量
-MONTHLY_TOP_N = int(os.getenv("MONTHLY_TOP_N", "30"))  # 月榜数量
-NEWS_TOP_N = int(os.getenv("NEWS_TOP_N", "5"))  # 资讯推送数量
 
-# ── HTTP 请求头（模拟浏览器，防 403） ──
-GITHUB_HEADERS = {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/125.0.0.0 Safari/537.36"
-    ),
-}
+# ── LLM 配置（AI 新闻摘要） ──
+LLM_MODEL_ID = os.getenv("LLM_MODEL_ID", "deepseek-chat")
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1")
+
+# ── Tavily 搜索 API ──
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY", "")

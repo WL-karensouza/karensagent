@@ -8,26 +8,16 @@ const routes = [
     meta: { title: 'Agent 控制台' },
   },
 
-  /* ── GitHub Agent 子路由 ── */
+  /* ── AI 新闻 Agent ── */
   {
-    path: '/agent/github',
-    component: () => import('../views/agent/GithubDashboard.vue'),
-    meta: { agent: 'github', title: 'GitHub · 仪表盘' },
+    path: '/agent/ai_news',
+    component: () => import('../views/agent/AiNewsDashboard.vue'),
+    meta: { agent: 'ai_news', title: 'AI 前沿 · 仪表盘' },
   },
   {
-    path: '/agent/github/preview',
-    component: () => import('../views/agent/GithubPreview.vue'),
-    meta: { agent: 'github', title: 'GitHub · 内容预览' },
-  },
-  {
-    path: '/agent/github/history',
-    component: () => import('../views/agent/GithubHistory.vue'),
-    meta: { agent: 'github', title: 'GitHub · 推送历史' },
-  },
-  {
-    path: '/agent/github/settings',
-    component: () => import('../views/agent/GithubSettings.vue'),
-    meta: { agent: 'github', title: 'GitHub · 配置管理' },
+    path: '/agent/ai_news/history',
+    component: () => import('../views/agent/AiNewsHistory.vue'),
+    meta: { agent: 'ai_news', title: 'AI 前沿 · 推送历史' },
   },
 
   /* ── 股票 Agent ── */

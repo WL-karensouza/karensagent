@@ -18,7 +18,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import init_db, seed_keywords
+from database import init_db
 
 
 # ── 生命周期管理 ──
@@ -29,25 +29,24 @@ async def lifespan(app: FastAPI):
     # 启动
     print("[main] 🚀 Karens Agent 启动中...")
     init_db()
-    seed_keywords()
     print("[main] ✅ 数据库初始化完成")
 
     # 启动定时任务
-    from github_agent.scheduler import start_scheduler
+    from ai_news_agent.scheduler import start_scheduler
     start_scheduler()
 
     print("[main] ✅ 全部就绪")
     yield
     # 关闭
-    from github_agent.scheduler import stop_scheduler
+    from ai_news_agent.scheduler import stop_scheduler
     stop_scheduler()
     print("[main] 🛑 Karens Agent 已关闭")
 
 
 app = FastAPI(
     title="Karens Agent",
-    description="多智能体平台 — GitHub 热榜 + 股票分析",
-    version="1.2.0",
+    description="多智能体平台 — AI 前沿咨询 + 股票分析",
+    version="2.0.0",
     lifespan=lifespan,
 )
 
@@ -61,16 +60,14 @@ app.add_middleware(
 )
 
 # ── API 路由注册 ──
-from github_agent.routers.dashboard import router as dashboard_router
-from routers.history import router as history_router
-from github_agent.routers.preview import router as preview_router
-from github_agent.routers.trigger import router as trigger_router
+from ai_news_agent.routers.dashboard import router as dashboard_router
+from ai_news_agent.routers.history import router as history_router
+from ai_news_agent.routers.trigger import router as trigger_router
 from routers.config_api import router as config_router
 from routers.stock_api import router as stock_router
 
 app.include_router(dashboard_router)
 app.include_router(history_router)
-app.include_router(preview_router)
 app.include_router(trigger_router)
 app.include_router(config_router)
 app.include_router(stock_router)

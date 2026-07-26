@@ -24,12 +24,13 @@ function openAgent(id) {
 
     <!-- Agent 卡片网格 -->
     <div class="agent-card-grid">
-      <!-- GitHub Agent -->
-      <div class="agent-card" @click="openAgent('github')">
+      <!-- AI 新闻 Agent -->
+      <div class="agent-card" @click="openAgent('ai_news')">
         <div class="agent-card-header">
-          <div class="agent-icon" style="background:#24292e;">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff">
-              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12z"/>
+          <div class="agent-icon" style="background:#0d6efd;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M12 6v6l4 2"/>
             </svg>
           </div>
           <div class="agent-status">
@@ -39,27 +40,28 @@ function openAgent(id) {
         </div>
 
         <div class="agent-card-body">
-          <h3>GitHub 热榜追踪</h3>
-          <p class="agent-desc">每日抓取 GitHub Trending 和 AI 前沿资讯，关键词过滤后推送到飞书</p>
+          <h3>AI 前沿速递</h3>
+          <p class="agent-desc">每日 Tavily 搜索 + DeepSeek 智能摘要，自动推送 AI 行业新闻到飞书</p>
 
           <div class="agent-stats">
             <div class="agent-stat-item">
-              <span class="agent-stat-value">{{ store.stats.today_repos || 0 }}</span>
-              <span class="agent-stat-label">今日仓库</span>
+              <span class="agent-stat-value">{{ store.stats.today_daily || 0 }}</span>
+              <span class="agent-stat-label">今日日报</span>
             </div>
             <div class="agent-stat-item">
-              <span class="agent-stat-value">{{ store.stats.today_news || 0 }}</span>
-              <span class="agent-stat-label">今日资讯</span>
+              <span class="agent-stat-value">{{ store.stats.today_weekly || 0 }}</span>
+              <span class="agent-stat-label">今日周报</span>
             </div>
             <div class="agent-stat-item">
-              <span class="agent-stat-value">{{ store.stats.today_pushes || 0 }}</span>
-              <span class="agent-stat-label">推送次数</span>
+              <span class="agent-stat-value">{{ store.stats.week_reports || 0 }}</span>
+              <span class="agent-stat-label">近一周报告</span>
             </div>
           </div>
 
           <div class="agent-meta">
-            <span class="meta-tag">每天 {{ store.stats.push_time || '09:00' }} 推送</span>
+            <span class="meta-tag">每天 09:00 推送</span>
             <span class="meta-tag">飞书</span>
+            <span class="meta-tag">Tavily + DeepSeek</span>
           </div>
         </div>
       </div>

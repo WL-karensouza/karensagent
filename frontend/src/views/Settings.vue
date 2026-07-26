@@ -28,8 +28,7 @@
     <div style="margin-top:24px;" class="card">
       <h3 style="font-size:0.95rem;font-weight:600;margin-bottom:12px;">Agent 配置入口</h3>
       <div style="display:flex;gap:12px;">
-        <router-link to="/agent/github/settings" class="btn btn-outline btn-sm">GitHub 热榜设置</router-link>
-        <router-link to="/agent/stock" class="btn btn-outline btn-sm">股票分析（开发中）</router-link>
+        <router-link to="/agent/stock" class="btn btn-outline btn-sm">股票分析设置</router-link>
       </div>
     </div>
   </div>
