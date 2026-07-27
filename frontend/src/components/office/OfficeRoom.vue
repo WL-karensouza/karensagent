@@ -3,6 +3,8 @@
    OfficeRoom —— 房间结构：灯光系统 + 地板 + 墙体 + 窗户
    浅色国际配色，阴影 / 抗锯齿由 TresCanvas 统一开启
    ═══════════════════════════════════════════ */
+/* DoubleSide：墙双面可见，配合相机横向 360° 旋转，绕到墙外背面也不穿帮 */
+import { DoubleSide } from 'three'
 </script>
 
 <template>
@@ -37,20 +39,26 @@
       <TresMeshStandardMaterial color="#E8D5B7" :roughness="0.85" :metalness="0.05" />
     </TresMesh>
 
-    <!-- ══ 后墙 ══ -->
+    <!-- ══ 后墙（DoubleSide：双面可见，360° 绕到背面不穿帮） ══ -->
     <TresMesh :position="[0, 2.5, -5]" receive-shadow>
       <TresPlaneGeometry :args="[14, 5]" />
-      <TresMeshStandardMaterial color="#F2EFE9" :roughness="0.95" />
+      <TresMeshStandardMaterial color="#F2EFE9" :roughness="0.95" :side="DoubleSide" />
     </TresMesh>
 
-    <!-- ══ 侧墙（半高，留出俯视空间方便观察） ══ -->
-    <TresMesh :rotation="[0, Math.PI / 2, 0]" :position="[-7, 1.25, 0]" receive-shadow>
-      <TresPlaneGeometry :args="[10, 2.5]" />
-      <TresMeshStandardMaterial color="#EDE8DF" :roughness="0.95" />
+    <!-- ══ 侧墙（全高围合；DoubleSide 双面可见） ══ -->
+    <TresMesh :rotation="[0, Math.PI / 2, 0]" :position="[-7, 2.5, 0]" receive-shadow>
+      <TresPlaneGeometry :args="[10, 5]" />
+      <TresMeshStandardMaterial color="#EDE8DF" :roughness="0.95" :side="DoubleSide" />
     </TresMesh>
-    <TresMesh :rotation="[0, -Math.PI / 2, 0]" :position="[7, 1.25, 0]" receive-shadow>
-      <TresPlaneGeometry :args="[10, 2.5]" />
-      <TresMeshStandardMaterial color="#EDE8DF" :roughness="0.95" />
+    <TresMesh :rotation="[0, -Math.PI / 2, 0]" :position="[7, 2.5, 0]" receive-shadow>
+      <TresPlaneGeometry :args="[10, 5]" />
+      <TresMeshStandardMaterial color="#EDE8DF" :roughness="0.95" :side="DoubleSide" />
+    </TresMesh>
+
+    <!-- ══ 前墙（补全围合；DoubleSide 双面可见） ══ -->
+    <TresMesh :rotation="[0, Math.PI, 0]" :position="[0, 2.5, 5]" receive-shadow>
+      <TresPlaneGeometry :args="[14, 5]" />
+      <TresMeshStandardMaterial color="#EDE8DF" :roughness="0.95" :side="DoubleSide" />
     </TresMesh>
 
     <!-- ══ 后墙发光窗户 ×2（纯装饰，模拟采光） ══ -->

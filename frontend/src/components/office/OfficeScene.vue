@@ -13,6 +13,7 @@ import OfficeWorker from './OfficeWorker.vue'
 import OfficeNameplate from './OfficeNameplate.vue'
 import OfficeWallScreen from './OfficeWallScreen.vue'
 import OfficeDecorations from './OfficeDecorations.vue'
+import OfficeCameraClamp from './OfficeCameraClamp.vue'
 
 /* 事件向上抛：go-agent（跳转）/ ready（场景就绪） */
 const emit = defineEmits(['go-agent', 'ready'])
@@ -30,17 +31,18 @@ function onWorkerClick(agentId) {
   <TresCanvas
     shadows
     antialias
+    clear-color="#ECE8E0"
     @ready="onSceneReady"
   >
-    <!-- 主相机：v5 必须用子元素声明（:camera prop 只接受相机实例，传配置对象会崩） -->
-    <TresPerspectiveCamera :position="[0, 6, 6]" :fov="55" />
-    <!-- 轨道控制：左键旋转 / 滚轮缩放 / 右键平移 -->
+    <!-- 主相机：墙内较高俯视；fov 放宽 + 视线上抬，确保后墙大屏顶部完整入镜（初值肉眼可调） -->
+    <TresPerspectiveCamera :position="[0, 4.3, 4.3]" :fov="60" />
+    <!-- 轨道控制：左键旋转 / 滚轮缩放；禁用平移防视角歪出房间；不限制 azimuth = 横向 360° -->
+    <!-- 距离/角度不做球形限制，统一由 OfficeCameraClamp 夹盒（注：zoom 到边界的抖动属问题2，待架构决策） -->
     <OrbitControls
       :enableDamping="true"
-      :minDistance="4"
-      :maxDistance="16"
-      :maxPolarAngle="Math.PI / 2.5"
-      :target="[0, 0, -1]"
+      :enablePan="false"
+      :minDistance="2"
+      :target="[0, 1.1, -1.6]"
     />
 
     <OfficeRoom />
@@ -58,6 +60,9 @@ function onWorkerClick(agentId) {
 
     <!-- 墙面大屏（静态占位） -->
     <OfficeWallScreen :position="[0, 2.2, -4.8]" />
+
+    <!-- 相机夹盒：每帧把相机位置限制在房间包围盒内，保证视角永不离房间（须排在 OrbitControls 之后注册） -->
+    <OfficeCameraClamp />
   </TresCanvas>
 </template>
 

@@ -52,30 +52,30 @@ function onClick() {
     @pointer-over="onOver"
     @pointer-out="onOut"
   >
-    <!-- ══ 躯干 ══ -->
-    <TresMesh :position="[0, 0.66, 0.55]" cast-shadow>
-      <TresBoxGeometry :args="[0.3, 0.4, 0.2]" />
+    <!-- ══ 躯干（上移+加高：抬高坐姿，腿/脚不动；数值为肉眼验收初值） ══ -->
+    <TresMesh :position="[0, 0.86, 0.55]" cast-shadow>
+      <TresBoxGeometry :args="[0.3, 0.5, 0.2]" />
       <TresMeshStandardMaterial :color="shirt" :roughness="0.8" />
     </TresMesh>
 
-    <!-- ══ 头部 ══ -->
-    <TresMesh :position="[0, 0.98, 0.55]" cast-shadow>
-      <TresSphereGeometry :args="[0.12, 20, 20]" />
+    <!-- ══ 头部（抬高+略放大，坐姿头顶≈1.38，明显高过桌面与显示器下沿） ══ -->
+    <TresMesh :position="[0, 1.24, 0.55]" cast-shadow>
+      <TresSphereGeometry :args="[0.14, 20, 20]" />
       <TresMeshStandardMaterial :color="SKIN" :roughness="0.7" />
     </TresMesh>
 
-    <!-- ══ 左臂（枢轴在肩，向前伸向键盘，打字时绕 x 轴摆动） ══ -->
-    <TresGroup ref="leftArm" :position="[-0.19, 0.8, 0.52]">
-      <TresMesh :position="[0, -0.02, -0.18]" :rotation="[0.5, 0, 0]" cast-shadow>
-        <TresBoxGeometry :args="[0.07, 0.07, 0.36]" />
+    <!-- ══ 左臂（肩随躯干上移；枢轴在肩，向前下伸向键盘，打字时绕 x 轴摆动） ══ -->
+    <TresGroup ref="leftArm" :position="[-0.19, 1.02, 0.52]">
+      <TresMesh :position="[0, -0.1, -0.2]" :rotation="[0.7, 0, 0]" cast-shadow>
+        <TresBoxGeometry :args="[0.07, 0.07, 0.4]" />
         <TresMeshStandardMaterial :color="shirt" :roughness="0.8" />
       </TresMesh>
     </TresGroup>
 
     <!-- ══ 右臂 ══ -->
-    <TresGroup ref="rightArm" :position="[0.19, 0.8, 0.52]">
-      <TresMesh :position="[0, -0.02, -0.18]" :rotation="[0.5, 0, 0]" cast-shadow>
-        <TresBoxGeometry :args="[0.07, 0.07, 0.36]" />
+    <TresGroup ref="rightArm" :position="[0.19, 1.02, 0.52]">
+      <TresMesh :position="[0, -0.1, -0.2]" :rotation="[0.7, 0, 0]" cast-shadow>
+        <TresBoxGeometry :args="[0.07, 0.07, 0.4]" />
         <TresMeshStandardMaterial :color="shirt" :roughness="0.8" />
       </TresMesh>
     </TresGroup>
