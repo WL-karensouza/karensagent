@@ -4,7 +4,7 @@ import json
 from datetime import date, datetime, timedelta
 
 from sqlalchemy import func
-from database import SessionLocal
+from database import SessionLocal, _model_to_dict
 from .models import AiNewsReport
 
 
@@ -179,16 +179,3 @@ def get_dashboard_stats() -> dict:
         db.close()
 
 
-# ═══════════════════════════════════════════
-# 工具函数
-# ═══════════════════════════════════════════
-
-def _model_to_dict(obj) -> dict:
-    """将 ORM 模型对象转为 dict"""
-    d = {}
-    for col in obj.__table__.columns:
-        val = getattr(obj, col.key)
-        if isinstance(val, (date, datetime)):
-            val = str(val)
-        d[col.key] = val
-    return d

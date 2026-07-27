@@ -256,17 +256,6 @@ def delete_watchlist(stock_code: str) -> bool:
 # 工具函数
 # ═══════════════════════════════════════════
 
-def _row_to_dict(row) -> dict:
-    """将 SQLAlchemy 聚合查询结果转为 dict"""
-    d = {}
-    for field in row._mapping:
-        val = row._mapping[field]
-        if isinstance(val, (date, datetime)):
-            val = str(val)
-        d[field] = val
-    return d
-
-
 def _model_to_dict(obj) -> dict:
     """将 ORM 模型对象转为 dict"""
     d = {}

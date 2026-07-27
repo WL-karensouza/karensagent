@@ -1,54 +1,59 @@
-"""AI 前沿咨询 Agent —— 固定的搜索 Query 和 LLM 摘要 Prompt"""
+"""AI 前沿咨询 Agent —— Prompt 模板（搜索意图 + 动态搜索词 + LLM 摘要）"""
 
 # ═══════════════════════════════════════════
-# Tavily 搜索 Query（中英文双语，提高覆盖面）
+# 搜索意图（替代硬编码 query，由 understand 节点动态生成搜索词）
 # ═══════════════════════════════════════════
 
-DAILY_SEARCH_QUERY = (
-    "AI artificial intelligence breaking news today "
-    "large language model LLM agent multi-agent RAG "
-    "open source model release AI safety regulation "
-    "OpenAI Anthropic Google DeepMind latest"
-)
+DAILY_SEARCH_INTENT = "搜索昨天AI/人工智能领域的重大新闻"
 
-WEEKLY_SEARCH_QUERY = (
-    "AI artificial intelligence important news this week 2026 "
-    "breakthrough technology trend open source framework "
-    "large language model LLM agent research paper "
-    "AI policy regulation industry competition"
-)
+WEEKLY_SEARCH_INTENT = "搜索最近一周AI/人工智能领域的重大新闻"
 
 # ═══════════════════════════════════════════
-# LLM 摘要 Prompt
+# Understand 节点 Prompt（分析意图 → 生成搜索词 + 时效）
 # ═══════════════════════════════════════════
 
-DAILY_SUMMARIZE_PROMPT = """当前日期：{today_str}
+UNDERSTAND_QUERY_PROMPT = """分析以下搜索意图："{search_intent}"
 
-基于以下搜索结果为用户提供过去 24 小时内 AI/人工智能领域的重大新闻摘要：
+当前日期：{today_str} {day_of_week}
+
+请完成三个任务：
+1. 简洁总结要搜索什么内容
+2. 判断信息时效性要求，转换为具体天数
+   - "今天/今日/今天发生的" → 1天
+   - "最近N天" → N天
+   - "最近一周/过去7天" → 7天
+   - "最近一月/这个月" → 30天
+   - 没有明确时间要求 → 不限
+3. 生成最适合搜索的关键词（必须使用英文！Tavily英文索引质量远好于中文，中文搜索会返回过期内容）
+   - 如果有时效要求，搜索词中请自然地加入时间限定词（如 "today"、"July 27 2026" 等）
+
+格式：
+理解：[用户需求总结]
+时效：[仅输出数字，如 1、7、30，或"不限"]
+搜索词：[最佳搜索关键词]"""
+
+
+# ═══════════════════════════════════════════
+# LLM 摘要 Prompt（日报/周报共用，report_type 由调用方决定）
+# ═══════════════════════════════════════════
+
+SUMMARIZE_PROMPT = """当前日期：{today_str}（这是"今天"的准确日期，请以此为准）
+
+基于以下搜索结果为用户提供完整、准确的答案：
 
 搜索结果：
 {search_results}
 
 请严格遵循以下要求：
-1. 筛选出真正属于过去 24 小时内的新闻（对比发布时间与当前日期 {today_str}）
-2. 用中文简洁总结，每条 1-2 句话，突出核心信息
-3. 每条新闻必须标注：📅发布时间 和 🔗来源URL
-4. 如果搜索结果中的发布时间早于 {today_str}，诚实告知"搜索到的最新新闻是 X 月 X 日的"
-5. 按发布时间从新到旧排列
-6. 最多 5 条
-7. 不要包含与 AI/人工智能无关的内容"""
+1. 综合搜索结果，提供准确、有用的回答
+2. 每条信息/新闻必须标注：📅发布时间 和 🔗来源URL
+3. 对比搜索结果中的发布时间与当前日期{today_str}，判断是否真的是今天发布的
+4. 如果搜索结果中的发布时间早于{today_str}，请诚实告知用户"搜索到的最新新闻是X月X日的，可能今日新闻尚未被索引"
+5. 如果搜索结果中的发布时间为"时间未知"，请在回答中诚实说明
+6. 按发布时间从新到旧排列
+7. 回答要结构清晰、易于理解
+8. 如果搜索结果不够完整，请说明并提供补充建议"""
 
-WEEKLY_SUMMARIZE_PROMPT = """当前日期：{today_str}
-
-基于以下搜索结果为用户提供过去 7 天内 AI/人工智能领域最重要的新闻摘要：
-
-搜索结果：
-{search_results}
-
-请严格遵循以下要求：
-1. 筛选出过去 7 天内最重要的 AI 新闻
-2. 用中文简洁总结，每条 1-2 句话，突出核心信息和为什么重要
-3. 每条新闻必须标注：📅发布时间 和 🔗来源URL
-4. 按重要性排序（非时间顺序），最重要的排前面
-5. 最多 10 条
-6. 不要包含与 AI/人工智能无关的内容"""
+# 兼容旧引用（后续可删除）
+DAILY_SUMMARIZE_PROMPT = SUMMARIZE_PROMPT
+WEEKLY_SUMMARIZE_PROMPT = SUMMARIZE_PROMPT

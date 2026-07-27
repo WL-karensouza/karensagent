@@ -4,6 +4,9 @@ from datetime import datetime
 import httpx
 from config import FEISHU_WEBHOOK_URL
 
+# 飞书卡片内容上限 100KB，单个 lark_md 块安全上限约 40KB，留足余量
+_MAX_CARD_LEN = 15000
+
 
 def build_ai_news_card(daily_summary: str, weekly_summary: str) -> dict:
     """构建 AI 新闻飞书交互式卡片
@@ -16,6 +19,18 @@ def build_ai_news_card(daily_summary: str, weekly_summary: str) -> dict:
         飞书卡片 JSON dict
     """
     today_str = datetime.now().strftime("%Y-%m-%d")
+
+    # 飞书卡片内容上限 100KB，单个 lark_md 块实测安全上限约 40KB
+    MAX_LEN = 15000
+
+    def _safe(s: str, label: str) -> str:
+        if len(s) <= MAX_LEN:
+            return s
+        print(f"[feishu] ⚠️ {label} 内容过长 ({len(s)} 字符)，截断至 {MAX_LEN}")
+        return s[:MAX_LEN] + "\n\n...（内容过长已截断，完整报告请查看后台历史）"
+
+    daily_safe = _safe(daily_summary, "日报")
+    weekly_safe = _safe(weekly_summary, "周报")
 
     card = {
         "msg_type": "interactive",
@@ -34,7 +49,7 @@ def build_ai_news_card(daily_summary: str, weekly_summary: str) -> dict:
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": "### 📅 昨日 AI 新闻\n\n" + daily_summary,
+                        "content": "### 📅 昨日 AI 新闻\n\n" + daily_safe,
                     },
                 },
                 {"tag": "hr"},
@@ -43,7 +58,7 @@ def build_ai_news_card(daily_summary: str, weekly_summary: str) -> dict:
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": "### 📊 近一周 AI 新闻\n\n" + weekly_summary,
+                        "content": "### 📊 近一周 AI 新闻\n\n" + weekly_safe,
                     },
                 },
                 {"tag": "hr"},
@@ -64,8 +79,8 @@ def build_ai_news_card(daily_summary: str, weekly_summary: str) -> dict:
     return card
 
 
-def send_feishu_card(card: dict) -> bool:
-    """发送飞书交互式卡片消息
+def _post_card(card: dict) -> bool:
+    """发送飞书卡片（内部通用发送逻辑）
 
     Returns:
         True 表示发送成功
@@ -82,28 +97,28 @@ def send_feishu_card(card: dict) -> bool:
             headers={"Content-Type": "application/json"},
         )
         data = resp.json()
-        code = data.get("code", -1)
-        status_code = data.get("StatusCode", -1)
-
-        if code == 0 or status_code == 0:
+        ok = data.get("code") == 0 or data.get("StatusCode") == 0
+        if ok:
             print("[feishu] ✅ 卡片推送成功")
-            return True
         else:
             print(f"[feishu] ❌ 推送失败: {data}")
-            return False
+        return ok
     except Exception as e:
         print(f"[feishu] ❌ 推送异常: {e}")
         return False
 
 
+def send_feishu_card(card: dict) -> bool:
+    """发送飞书交互式卡片消息"""
+    return _post_card(card)
+
+
 def send_error_notification(title: str, detail: str) -> bool:
     """发送飞书错误告警卡片（红色标题）"""
-    if not FEISHU_WEBHOOK_URL:
-        return False
-
     card = {
         "msg_type": "interactive",
         "card": {
+            "config": {"wide_screen_mode": True},
             "header": {
                 "title": {"tag": "plain_text", "content": f"⚠️ {title}"},
                 "template": "red",
@@ -125,15 +140,4 @@ def send_error_notification(title: str, detail: str) -> bool:
             ],
         },
     }
-
-    try:
-        resp = httpx.post(
-            FEISHU_WEBHOOK_URL,
-            json=card,
-            timeout=30,
-        )
-        data = resp.json()
-        return data.get("code") == 0 or data.get("StatusCode") == 0
-    except Exception as e:
-        print(f"[feishu] ❌ 错误通知发送失败: {e}")
-        return False
+    return _post_card(card)

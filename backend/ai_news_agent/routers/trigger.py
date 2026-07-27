@@ -58,15 +58,3 @@ def _run_full(task_id: str):
             "finished_at": datetime.now().isoformat(),
         }
 
-
-# ── 定期清理过期任务结果 ──
-def _cleanup_expired_tasks():
-    """清理 1 小时前的任务结果"""
-    now = datetime.now()
-    expired = [
-        tid for tid, r in _task_results.items()
-        if r.get("status") in ("done", "failed")
-        and (now - datetime.fromisoformat(r.get("finished_at", r.get("started_at")))).seconds > 3600
-    ]
-    for tid in expired:
-        del _task_results[tid]

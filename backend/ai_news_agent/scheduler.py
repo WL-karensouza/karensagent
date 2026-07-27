@@ -25,75 +25,61 @@ def get_scheduler() -> BackgroundScheduler:
 
 def daily_ai_news_push():
     """每日 AI 新闻抓取 + 推送（定时任务入口）"""
-    print(f"\n[ai_news] ⏰ 定时任务触发 — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("[ai_news] 定时任务触发 — " + datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
     today_str = datetime.now().strftime("%Y-%m-%d")
 
     errors = []
+    results = {}
 
-    # ── ① 搜索昨日 AI 新闻 ──
-    print("[ai_news] 📅 开始搜索昨日 AI 新闻...")
-    try:
-        daily_result = run_news_search("daily")
-        save_ai_news_report(
-            report_type="daily",
-            search_query=daily_result["search_query"],
-            search_results=daily_result["search_results"],
-            summary=daily_result["summary"],
-            source_urls=_extract_urls(daily_result["search_results"]),
-        )
-    except Exception as e:
-        daily_result = None
-        errors.append(f"昨日新闻: {e}")
-        print(f"[ai_news] ❌ 昨日新闻搜索失败: {e}")
+    # 依次搜索日报 / 周报（结构相同，循环处理）
+    report_tasks = [
+        ("daily", "昨日 AI 新闻"),
+        ("weekly", "近一周 AI 新闻"),
+    ]
+    for report_type, label in report_tasks:
+        print(f"[ai_news] {label} 开始搜索...")
+        try:
+            result = run_news_search(report_type)
+            save_ai_news_report(
+                report_type=report_type,
+                search_query=result["search_query"],
+                search_results=result["search_results"],
+                summary=result["summary"],
+                source_urls=_extract_urls(result["search_results"]),
+            )
+            results[report_type] = result
+        except Exception as e:
+            errors.append(f"{label}: {e}")
+            print(f"[ai_news] {label}搜索失败: {e}")
 
-    # ── ② 搜索近一周 AI 新闻 ──
-    print("[ai_news] 📊 开始搜索近一周 AI 新闻...")
-    try:
-        weekly_result = run_news_search("weekly")
-        save_ai_news_report(
-            report_type="weekly",
-            search_query=weekly_result["search_query"],
-            search_results=weekly_result["search_results"],
-            summary=weekly_result["summary"],
-            source_urls=_extract_urls(weekly_result["search_results"]),
-        )
-    except Exception as e:
-        weekly_result = None
-        errors.append(f"近一周新闻: {e}")
-        print(f"[ai_news] ❌ 近一周新闻搜索失败: {e}")
-
-    # ── ③ 构建飞书卡片并推送 ──
-    if daily_result is None and weekly_result is None:
+    # 构建飞书卡片并推送
+    if not results:
         send_error_notification(
             "AI 新闻抓取失败",
-            f"日期: {today_str}\n\n" + "\n".join(errors),
+            "日期: " + today_str + "\n\n" + "\n".join(errors),
         )
         return
 
-    daily_summary = daily_result["summary"] if daily_result else "⚠️ 今日搜索失败，请稍后重试"
-    weekly_summary = weekly_result["summary"] if weekly_result else "⚠️ 搜索失败，请稍后重试"
+    daily_summary = results.get("daily", {}).get("summary", "今日搜索失败，请稍后重试")
+    weekly_summary = results.get("weekly", {}).get("summary", "搜索失败，请稍后重试")
 
     card = build_ai_news_card(daily_summary, weekly_summary)
     card_json = json.dumps(card, ensure_ascii=False)
     success = send_feishu_card(card)
 
-    # ── ④ 记录推送历史 ──
-    news_count = (
-        (1 if daily_result else 0)
-        + (1 if weekly_result else 0)
-    )
+    # 记录推送历史
     save_push_history(
         platform="feishu",
         content_type="daily",
         content=card_json,
-        news_count=news_count,
+        news_count=len(results),
         status="sent" if success else "failed",
     )
 
     if success:
-        print(f"[ai_news] ✅ 推送完成 — {today_str}")
+        print(f"[ai_news] 推送完成 {today_str}")
     else:
-        print(f"[ai_news] ⚠️ 推送失败 — {today_str}")
+        print(f"[ai_news] 推送失败 {today_str}")
 
 
 def _extract_urls(search_results: str) -> list[str]:
