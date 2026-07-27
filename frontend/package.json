@@ -11,9 +11,12 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@tresjs/cientos": "^5.8.1",
+    "@tresjs/core": "^5.8.3",
     "axios": "^1.18.1",
     "marked": "^18.0.6",
     "pinia": "^3.0.4",
+    "three": "^0.179.0",
     "vue": "^3.5.38",
     "vue-router": "^4.6.4"
   },

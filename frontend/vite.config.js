@@ -1,8 +1,14 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import { templateCompilerOptions } from '@tresjs/core'
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [
+    vue({
+      /* TresJS 必需：让 Vue 编译器把 Tres* 标签当作自定义元素，交给 TresJS 渲染器 */
+      ...templateCompilerOptions,
+    }),
+  ],
   server: {
     port: 5173,
     proxy: {

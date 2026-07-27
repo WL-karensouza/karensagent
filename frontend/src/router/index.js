@@ -4,8 +4,8 @@ const routes = [
   {
     path: '/',
     name: 'home',
-    component: () => import('../views/Home.vue'),
-    meta: { title: 'Agent 控制台' },
+    component: () => import('../views/OfficeHome.vue'),
+    meta: { title: 'Agent 控制台', noPageTransition: true },
   },
 
   /* ── AI 新闻 Agent ── */
