@@ -1,18 +1,12 @@
 <script setup>
 /* ═══════════════════════════════════════════
    OfficeDecorations —— 装饰物
-   地毯 / 绿植 / 咖啡机 / 白板 / 书架
+   绿植 / 咖啡机 / 白板 / 书架
    ═══════════════════════════════════════════ */
 </script>
 
 <template>
   <TresGroup>
-    <!-- ══ 地毯（两工位下方暖色区域） ══ -->
-    <TresMesh :rotation="[-Math.PI / 2, 0, 0]" :position="[0, 0.01, -1.5]" receive-shadow>
-      <TresPlaneGeometry :args="[9, 4]" />
-      <TresMeshStandardMaterial color="#E0CBA8" :roughness="0.95" />
-    </TresMesh>
-
     <!-- ══ 绿植（左后角） ══ -->
     <TresGroup :position="[-6, 0, -4]">
       <!-- 花盆 -->

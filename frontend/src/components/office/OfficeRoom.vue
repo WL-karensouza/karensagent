@@ -4,7 +4,32 @@
    浅色国际配色，阴影 / 抗锯齿由 TresCanvas 统一开启
    ═══════════════════════════════════════════ */
 /* DoubleSide：墙双面可见，配合相机横向 360° 旋转，绕到墙外背面也不穿帮 */
-import { DoubleSide } from 'three'
+import { DoubleSide, TextureLoader, RepeatWrapping, SRGBColorSpace, NoColorSpace, Vector2 } from 'three'
+import { markRaw } from 'vue'
+
+/* ══ 地板 PBR 贴图（ambientCG WoodFloor036，CC0） ══
+   TextureLoader.load 同步返回 Texture 对象（图片后台解码，three 解码完自动重绘），
+   故无需 ref；再 markRaw 标记，杜绝 Vue 深代理 three 对象导致渲染崩溃（modelViewMatrix 报错）。
+   色彩空间：颜色图 sRGB、法线/粗糙度线性；三张统一 RepeatWrapping + 按地板长宽比平铺防拉伸 */
+const FLOOR_W = 14
+const FLOOR_D = 10
+const FLOOR_TILE = 2 /* 一块贴图覆盖的世界米数（资产标称≈1.9m，取 2 便于整除且木纹尺寸真实，可调） */
+
+const loader = new TextureLoader()
+
+function loadFloorMap(url, isColor) {
+  const tex = loader.load(url)
+  tex.wrapS = tex.wrapT = RepeatWrapping
+  tex.repeat.set(FLOOR_W / FLOOR_TILE, FLOOR_D / FLOOR_TILE)
+  tex.colorSpace = isColor ? SRGBColorSpace : NoColorSpace
+  return markRaw(tex)
+}
+
+const floorColor = loadFloorMap('/models/textures/WoodFloor_Color.jpg', true)
+const floorNormal = loadFloorMap('/models/textures/WoodFloor_NormalGL.jpg', false)
+const floorRough = loadFloorMap('/models/textures/WoodFloor_Roughness.jpg', false)
+/* 法线强度：0.5 让人字拼缝隙凹凸柔和，不显塑料感（用 Vector2 常量绑定，避免数组转换的不确定性） */
+const floorNormalScale = markRaw(new Vector2(0.5, 0.5))
 </script>
 
 <template>
@@ -36,7 +61,15 @@ import { DoubleSide } from 'three'
     <!-- ══ 地板（浅木色，接收阴影） ══ -->
     <TresMesh :rotation="[-Math.PI / 2, 0, 0]" receive-shadow>
       <TresPlaneGeometry :args="[14, 10]" />
-      <TresMeshStandardMaterial color="#E8D5B7" :roughness="0.85" :metalness="0.05" />
+      <!-- PBR 木地板：颜色/法线/粗糙度三贴图；roughness=1 让粗糙度图完全主导；metalness=0 木头不金属 -->
+      <TresMeshStandardMaterial
+        :map="floorColor"
+        :normal-map="floorNormal"
+        :roughness-map="floorRough"
+        :normal-scale="floorNormalScale"
+        :roughness="1"
+        :metalness="0"
+      />
     </TresMesh>
 
     <!-- ══ 后墙（DoubleSide：双面可见，360° 绕到背面不穿帮） ══ -->
