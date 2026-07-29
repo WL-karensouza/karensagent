@@ -26,16 +26,19 @@ if sys.platform == "win32":
 # 将 backend 加入 path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# 读取 .env
+# 读取 .env（缺失时警告并继续，不能 exit —— 本模块会被 stock_api 导入复用 push_to_feishu）
 env_path = Path(__file__).resolve().parent.parent / ".env"
 env_vars = {}
-with open(env_path, encoding="utf-8") as f:
-    for line in f:
-        line = line.strip()
-        if line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        env_vars[key.strip()] = value.strip()
+if not env_path.exists():
+    print(f"⚠️ 未找到 .env 文件: {env_path}，LLM 分析与飞书推送将不可用", file=sys.stderr)
+else:
+    with open(env_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            env_vars[key.strip()] = value.strip()
 
 os.environ.setdefault("DEEPSEEK_API_KEY", env_vars.get("DEEPSEEK_API_KEY", ""))
 FEISHU_WEBHOOK_URL = env_vars.get("FEISHU_STOCK_WEBHOOK_URL", "")
@@ -466,9 +469,9 @@ async def main():
         out_file.write_text(md, encoding="utf-8")
         print(f"\n  💾 保存: {out_file}")
 
-        # 飞书推送
+        # 飞书推送（第 2 参是 stock_name，453 行已从采集结果提取，勿再传 code）
         if args.push:
-            push_to_feishu(md, code, code)
+            push_to_feishu(md, stock_name, code)
 
     print(f"\n{'='*60}")
     print(f"  📋 实验 B 使用记录")
