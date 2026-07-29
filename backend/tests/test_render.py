@@ -197,6 +197,62 @@ def test_render_northbound_unavailable():
     print(f"[OK] 北向资金不可用渲染")
 
 
+def test_render_markdown_float_score():
+    """浮点评分（如 85.5）应按比例渲染进度条，而不是空条"""
+    from stock_agent.render import render_markdown
+
+    report = {"score": 85.5, "decision": "看多"}
+    md = render_markdown("600519", report, {"total": 100})
+    # int(85.5 / 100 * 20) = 17 格
+    assert "█" * 17 + "░" * 3 in md, "浮点评分应渲染 17 格进度条"
+
+
+def test_render_markdown_numeric_string_score():
+    """字符串数字评分（如 LLM 偶发返回 "85"）也应正常渲染"""
+    from stock_agent.render import render_markdown
+
+    report = {"score": "85", "decision": "看多"}
+    md = render_markdown("600519", report, {"total": 100})
+    assert "█" * 17 + "░" * 3 in md
+
+
+def test_render_markdown_invalid_score_empty_bar():
+    """非数字评分（N/A）渲染空条且不崩溃"""
+    from stock_agent.render import render_markdown
+
+    report = {"score": "N/A", "decision": "震荡"}
+    md = render_markdown("600519", report, {"total": 100})
+    assert "░" * 20 in md
+
+
+def test_render_markdown_pipe_escaped():
+    """模块3 表格字段含管道符时应转义，避免破坏 Markdown 表格布局"""
+    from stock_agent.render import render_markdown
+
+    report = {
+        "score": 60,
+        "decision": "震荡",
+        "module_3_财务健康": {
+            "key_indicators": [
+                {"name": "毛利率|扣非口径", "value": "89%|同比", "trend": "稳定", "verdict": "良好"},
+            ],
+        },
+    }
+    md = render_markdown("600519", report, {"total": 100})
+    assert "毛利率\\|扣非口径" in md
+    assert "89%\\|同比" in md
+
+
+def test_render_markdown_usage_footer():
+    """页脚应渲染 token 消耗（usage 参数不再是死参数）"""
+    from stock_agent.render import render_markdown
+
+    report = {"score": 75, "decision": "看多"}
+    md = render_markdown("600519", report, {"prompt": 5000, "completion": 2000, "total": 7000})
+    assert "7000" in md
+    assert "Token" in md
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("TDD Step 6: render.py 测试 (v2 9模块)")

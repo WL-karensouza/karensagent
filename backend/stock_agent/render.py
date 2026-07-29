@@ -7,13 +7,18 @@ Markdown 报告渲染
 from datetime import datetime
 
 
+def _escape_cell(value) -> str:
+    """转义 Markdown 表格单元格中的管道符，防止破坏表格布局"""
+    return str(value).replace("|", "\\|")
+
+
 def render_markdown(stock_code: str, report: dict, usage: dict, stock_name: str = "") -> str:
     """渲染为 Markdown 报告
 
     Args:
         stock_code: 股票代码
         report: analyze() 返回的分析结果 dict（9 模块格式）
-        usage: token 用量信息
+        usage: token 用量信息（渲染到报告页脚）
         stock_name: 股票名称（可选），为空时用 stock_code 兜底
     """
     name = stock_name or stock_code
@@ -21,11 +26,12 @@ def render_markdown(stock_code: str, report: dict, usage: dict, stock_name: str 
     score = report.get("score", "N/A")
     decision = report.get("decision", "N/A")
 
-    # 评分条
+    # 评分条（兼容 int / float / 数字字符串；非法值渲染空条）
     bar_len = 20
-    if isinstance(score, int):
-        filled = int(score / 100 * bar_len)
-    else:
+    try:
+        filled = int(float(score) / 100 * bar_len)
+        filled = max(0, min(bar_len, filled))  # 越界评分钳制到 [0, bar_len]
+    except (ValueError, TypeError):
         filled = 0
     bar = "█" * filled + "░" * (bar_len - filled)
 
@@ -104,7 +110,7 @@ def render_markdown(stock_code: str, report: dict, usage: dict, stock_name: str 
                 val = ind.get("value", "")
                 trend = ind.get("trend", "")
                 verdict = ind.get("verdict", "")
-                out.append(f"| {name} | {val} | {trend} | {verdict} |")
+                out.append(f"| {_escape_cell(name)} | {_escape_cell(val)} | {_escape_cell(trend)} | {_escape_cell(verdict)} |")
         if alerts:
             out.append("")
             out.append("**⚠️ 财务排雷：**")
@@ -267,6 +273,10 @@ def render_markdown(stock_code: str, report: dict, usage: dict, stock_name: str 
     out.append("")
     out.append("---")
     out.append(f"*生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}*")
+    # token 消耗（dogfooding 阶段跟踪成本用）
+    total_tokens = usage.get("total") if isinstance(usage, dict) else None
+    if total_tokens is not None:
+        out.append(f"*Token 消耗：{total_tokens}*")
     out.append("*以上分析仅供参考，不构成投资建议。股市有风险，投资需谨慎。*")
 
     return "\n".join(out)
