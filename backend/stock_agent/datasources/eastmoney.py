@@ -20,13 +20,18 @@ def _get_name_eastmoney(stock_code: str) -> str | None:
     # 港股 secid：116. + 零填充到5位
     if code.endswith(".HK"):
         pure = code.replace(".HK", "")
+        if not pure:  # 守卫：纯后缀输入（如 ".HK"）
+            return None
         secid = f"116.{pure.zfill(5)}"
     else:
         # A股：清掉 .SH/.SZ 后缀，按首字判断市场
         pure = code.replace(".SH", "").replace(".SZ", "")
+        if not pure:  # 守卫：空代码或纯后缀（如 ".SH"），避免 pure[0] IndexError
+            return None
         market = "1" if pure[0] in ("6", "5") else "0"
         secid = f"{market}.{pure}"
 
+    # 收窄异常：网络错误 / JSON 解析 / 字段缺失分别对应明确类型，不再裸吞 Exception
     try:
         r = requests.get(
             "https://push2.eastmoney.com/api/qt/stock/get",
@@ -34,10 +39,11 @@ def _get_name_eastmoney(stock_code: str) -> str | None:
             timeout=5,
         )
         data = r.json()
-        name = data.get("data", {}).get("f58", "")
+        name = (data.get("data") or {}).get("f58", "")  # data 字段可能为 None
         if name and len(name) >= 2:
             return name
-    except Exception:
+    except (requests.RequestException, ValueError, KeyError, TypeError):
+        # ValueError 覆盖 JSONDecodeError；TypeError/KeyError 覆盖响应结构异常
         pass
     return None
 
@@ -58,9 +64,13 @@ def _fetch_ohlcv_eastmoney(stock_code: str) -> dict | None:
     # 构造东财 secid：港股 116.{zfill(5)}，沪市 1.{code}，深市 0.{code}
     if code.endswith(".HK"):
         pure = code.replace(".HK", "")
+        if not pure:
+            return None
         secid = f"116.{pure.zfill(5)}"
     else:
         pure = code.replace(".SH", "").replace(".SZ", "")
+        if not pure:  # 守卫：空代码或纯后缀，避免 pure[0] IndexError
+            return None
         market = "1" if pure[0] in ("6", "5") else "0"
         secid = f"{market}.{pure}"
 
@@ -79,7 +89,7 @@ def _fetch_ohlcv_eastmoney(stock_code: str) -> dict | None:
             timeout=10,
         )
         data = r.json()
-        klines = data.get("data", {}).get("klines")
+        klines = (data.get("data") or {}).get("klines")  # data 字段可能为 None
         if not klines:
             return None
 
@@ -108,5 +118,5 @@ def _fetch_ohlcv_eastmoney(stock_code: str) -> dict | None:
             "change_pcts": change_pcts,
             "turnovers": turnovers,
         }
-    except Exception:
+    except (requests.RequestException, ValueError, KeyError, TypeError):
         return None
