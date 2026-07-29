@@ -42,8 +42,8 @@ def _get_name_eastmoney(stock_code: str) -> str | None:
         name = (data.get("data") or {}).get("f58", "")  # data 字段可能为 None
         if name and len(name) >= 2:
             return name
-    except (requests.RequestException, ValueError, KeyError, TypeError):
-        # ValueError 覆盖 JSONDecodeError；TypeError/KeyError 覆盖响应结构异常
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+        # ValueError 覆盖 JSONDecodeError；TypeError/KeyError 覆盖响应结构异常；AttributeError 覆盖 data 为 None 等非对象 JSON
         pass
     return None
 
@@ -118,5 +118,5 @@ def _fetch_ohlcv_eastmoney(stock_code: str) -> dict | None:
             "change_pcts": change_pcts,
             "turnovers": turnovers,
         }
-    except (requests.RequestException, ValueError, KeyError, TypeError):
+    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
         return None

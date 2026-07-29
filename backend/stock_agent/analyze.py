@@ -502,7 +502,7 @@ async def main():
         out_file.write_text(md, encoding="utf-8")
         print(f"\n  💾 保存: {out_file}")
 
-        # 飞书推送（第 2 参是 stock_name，453 行已从采集结果提取，勿再传 code）
+        # 飞书推送（第 2 参是 stock_name，489 行已从采集结果提取，勿再传 code）
         if args.push:
             push_to_feishu(md, stock_name, code)
 
