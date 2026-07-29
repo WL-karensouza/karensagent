@@ -10,7 +10,10 @@ import math
 
 
 def _calc_ema(data: list, period: int) -> list:
-    """计算指数移动平均（EMA），返回与输入等长的列表，首段不足时为 None"""
+    """计算指数移动平均（EMA），返回与输入等长的列表，首段不足时为 None
+
+    输入契约：data 不允许含 None（当前东财/iFinD 两个数据源均满足）。
+    """
     if len(data) < period:
         return [None] * len(data)
     k = 2.0 / (period + 1)
@@ -22,17 +25,24 @@ def _calc_ema(data: list, period: int) -> list:
 
 
 def _calc_ma(data: list, period: int) -> list:
-    """计算简单移动平均（MA），返回与输入等长的列表"""
+    """计算简单移动平均（MA），返回与输入等长的列表
+
+    窗口内 None 值被跳过，按有效值取平均；窗口全 None 则该点为 None。
+    """
     if len(data) < period:
         return [None] * len(data)
     result = [None] * len(data)
     for i in range(period - 1, len(data)):
-        result[i] = sum(data[i - period + 1:i + 1]) / period
+        window = [x for x in data[i - period + 1:i + 1] if x is not None]
+        if window:
+            result[i] = sum(window) / len(window)
     return result
 
 
 def _calc_macd(closes: list) -> dict:
     """计算 MACD 指标（标准参数 12/26/9）
+
+    输入契约：closes 不允许含 None，经由 _calc_ema 继承该契约。
 
     Returns:
         {'dif': [...], 'dea': [...], 'bar': [...]}  # bar = 2*(DIF-DEA)
@@ -73,15 +83,20 @@ def _calc_boll(closes: list, period: int = 20, multiplier: float = 2.0) -> dict:
 
     Returns:
         {'upper': [...], 'middle': [...], 'lower': [...]}
+    窗口内 None 值跳过；有效值不足 2 个时该点三轨为 None。
     """
     middle = _calc_ma(closes, period)
     upper = [None] * len(closes)
     lower = [None] * len(closes)
 
     for i in range(period - 1, len(closes)):
-        window = closes[i - period + 1:i + 1]
         mean = middle[i]
-        variance = sum((x - mean) ** 2 for x in window) / period
+        if mean is None:
+            continue
+        window = [x for x in closes[i - period + 1:i + 1] if x is not None]
+        if len(window) < 2:
+            continue
+        variance = sum((x - mean) ** 2 for x in window) / len(window)
         std = math.sqrt(variance)
         upper[i] = mean + multiplier * std
         lower[i] = mean - multiplier * std
@@ -90,7 +105,10 @@ def _calc_boll(closes: list, period: int = 20, multiplier: float = 2.0) -> dict:
 
 
 def _calc_rsi(closes: list, period: int = 14) -> list:
-    """计算 RSI（Wilder's smoothing），返回与输入等长的列表"""
+    """计算 RSI（Wilder's smoothing），返回与输入等长的列表
+
+    输入契约：closes 不允许含 None（当前东财/iFinD 两个数据源均满足）。
+    """
     if len(closes) < period + 1:
         return [None] * len(closes)
 
@@ -133,9 +151,7 @@ def _calc_kdj(highs: list, lows: list, closes: list, n: int = 9) -> dict:
     # 初始 K/D = 50
     k_prev, d_prev = 50.0, 50.0
     for i in range(n - 1, length):
-        hi = highs[i] if highs[i] is not None else closes[i]
-        lo = lows[i] if lows[i] is not None else closes[i]
-        # 窗口内的最高/最低
+        # 窗口内的最高/最低（highs/lows 含 None 时回退用 close 近似）
         win_high = max((highs[j] if highs[j] is not None else closes[j]) for j in range(i - n + 1, i + 1))
         win_low = min((lows[j] if lows[j] is not None else closes[j]) for j in range(i - n + 1, i + 1))
         if win_high == win_low:
