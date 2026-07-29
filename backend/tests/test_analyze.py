@@ -204,6 +204,48 @@ def test_analyze_stderr_does_not_leak_api_key(monkeypatch, capsys):
     assert "key_len=" in err, "应改为只记录 key 长度"
 
 
+# ═══════════════════════════════════════════
+# JSON 提取 — 括号深度匹配（替代贪婪正则）
+# ═══════════════════════════════════════════
+
+def test_parse_json_with_surrounding_prose():
+    """JSON 前后夹杂说明文字时，应提取最外层完整 JSON（贪婪正则会在跨多对象时越界）"""
+    from stock_agent.analyze import _parse_json
+
+    raw = '分析结果如下 {"score": 85, "nested": {"a": 1}, "list": [1, 2]} 以上。'
+    report = _parse_json(raw)
+    assert report["score"] == 85
+    assert report["nested"]["a"] == 1
+    assert report["list"] == [1, 2]
+
+
+def test_parse_json_braces_inside_string():
+    """字符串内的大括号不应干扰深度匹配"""
+    from stock_agent.analyze import _parse_json
+
+    raw = '{"desc": "比例 {x/y} 说明", "score": 60}'
+    report = _parse_json(raw)
+    assert report["score"] == 60
+    assert "{x/y}" in report["desc"]
+
+
+def test_parse_json_two_blocks_takes_first_complete():
+    """前后两个 JSON 块时，取第一个完整的（贪婪正则会合并两块导致解析失败）"""
+    from stock_agent.analyze import _parse_json
+
+    raw = '前言 {"score": 70} 中间干扰 {"other": 1} 结尾'
+    report = _parse_json(raw)
+    assert report["score"] == 70
+
+
+def test_extract_outermost_json_helper():
+    from stock_agent.analyze import _extract_outermost_json
+
+    assert _extract_outermost_json('xx {"a": {"b": 1}} yy') == '{"a": {"b": 1}}'
+    assert _extract_outermost_json('没有 JSON') is None
+    assert _extract_outermost_json('{"未闭合": 1') is None
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("TDD Step 5: analyze.py 测试 (v2 9模块)")

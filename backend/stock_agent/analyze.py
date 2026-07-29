@@ -299,6 +299,39 @@ def analyze(markdown_report: str) -> tuple[dict, dict]:
     return report, usage
 
 
+def _extract_outermost_json(text: str) -> str | None:
+    """按括号深度匹配提取最外层完整 {...}（比贪婪/非贪婪正则都稳健）
+
+    - 跟踪字符串内外状态，字符串内的大括号不参与配对
+    - 返回第一个深度归零的完整 JSON 子串；找不到返回 None
+    """
+    start = text.find('{')
+    if start == -1:
+        return None
+    depth = 0
+    in_string = False
+    escaped = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == '\\':
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            continue
+        if ch == '"':
+            in_string = True
+        elif ch == '{':
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0:
+                return text[start:i + 1]
+    return None
+
+
 def _parse_json(raw_text: str, max_retries: int = 2) -> dict:
     """容错 JSON 解析 — DeepSeek Reasoner 偶尔输出非法 JSON
 
@@ -340,10 +373,10 @@ def _parse_json(raw_text: str, max_retries: int = 2) -> dict:
                 print(f"[analyze] → 已补全 {open_braces}个}} {open_brackets}个]", file=sys.stderr)
                 continue
 
-            # 策略 3：可能 JSON 前后还有文字，尝试用正则提取最外层 {...}
-            m = _re.search(r'\{.*\}', text, _re.DOTALL)
-            if m and m.group() != text:
-                text = m.group()
+            # 策略 3：JSON 前后可能有文字，按括号深度匹配提取最外层完整 {...}
+            extracted = _extract_outermost_json(text)
+            if extracted and extracted != text:
+                text = extracted
                 print(f"[analyze] → 已提取最外层 JSON", file=sys.stderr)
                 continue
 
