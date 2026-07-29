@@ -5,12 +5,10 @@
 """
 import json
 import sys
-import warnings
 from pathlib import Path
 
-# 禁用 SSL 警告（call.py 使用 verify=False）
-# TODO(security): call.py 的 verify=False 存在 MITM 风险，修复见 Task 11
-warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+# 历史遗留：call.py 曾用 verify=False 并在此压制 SSL 警告。
+# 2026-07-29 已启用证书校验（verify=True），警告压制随之移除。
 
 SKILL_DIR = str(Path("~/.claude/skills/ifind-finance-data").expanduser())
 if SKILL_DIR not in sys.path:

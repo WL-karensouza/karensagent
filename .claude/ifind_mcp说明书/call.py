@@ -38,7 +38,7 @@ def _post(t, payload, timeout=60):
         SERVERS[t],
         json=payload,
         headers=_headers(t),
-        verify=False,
+        verify=True,  # 启用 TLS 证书校验（iFinD 为 DigiCert 签发证书，ssl_probe 实验已验证可行）
         timeout=timeout,
     )
     data = None
@@ -79,7 +79,7 @@ def _init(t):
         SERVERS[t],
         json=notify,
         headers=_headers(t),
-        verify=False,
+        verify=True,  # 启用 TLS 证书校验（iFinD 为 DigiCert 签发证书，ssl_probe 实验已验证可行）
         timeout=10,
     )
 
