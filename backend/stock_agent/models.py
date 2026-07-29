@@ -7,7 +7,7 @@ iFind 数据模型 — 基于动态 key-value 模式
   - 支持 LLM prompt 上下文的文本导出
 """
 from __future__ import annotations
-from typing import Optional, Any
+from typing import Optional
 
 
 # ═══════════════════════════════════════════
@@ -31,14 +31,19 @@ _TABLE_META_KEYS = frozenset({
 
 
 def _iter_fields(records: list[dict], skip_meta: bool = True):
-    """遍历 records 列表的所有 key-value，跳过元数据列和空值"""
+    """遍历 records 列表的所有 key-value，跳过元数据列和空值
+
+    值统一转 str 输出（iFind 可能返回 int/float）；
+    判空基于转换后的字符串，故数值 0 / 0.0 作为合法金融数据保留。
+    """
     for r in records:
         for k, v in r.items():
             if skip_meta and k in _TABLE_META_KEYS:
                 continue
-            if not v or not v.strip():
+            s = "" if v is None else str(v).strip()
+            if not s:
                 continue
-            yield k, v
+            yield k, s
 
 
 # ═══════════════════════════════════════════
@@ -230,6 +235,8 @@ class ShareholderData:
             if val:
                 lines.append(f"- {field}：{val}")
         # 前十大股东
+        # NOTE: 字段名是同花顺官方约定（含第{rank}名排名模板），非随意硬编码；
+        # 若 iFind 改版字段命名导致取数静默为空，考虑按模式匹配做动态发现
         lines.append("\n**前十大股东**：")
         for rank in range(1, 11):
             name = sh.get(f"股东名称（十大股东排名：第{rank}名）", "")
@@ -283,11 +290,12 @@ class NewsEventsData:
 
     @staticmethod
     def _first_of(record: dict, *keys: str) -> str:
-        """从 record 中取第一个非空字段值"""
+        """从 record 中取第一个非空字段值（兼容非字符串类型，统一转 str）"""
         for k in keys:
             val = record.get(k, "")
-            if val and val.strip():
-                return val
+            s = "" if val is None else str(val).strip()
+            if s:
+                return s
         return ""
 
     def __init__(self, stock_code: str, news: list[dict], notices: list[dict],
@@ -434,8 +442,9 @@ class MarketEnvData:
             for k, v in r.items():
                 if k in ("name", "code") or k in _TABLE_META_KEYS:
                     continue
-                if v and v.strip():
-                    lines.append(f"- {k}：{v}")
+                s = "" if v is None else str(v).strip()  # 数值安全 + 0 值保留
+                if s:
+                    lines.append(f"- {k}：{s}")
         if self.edb:
             lines.append("\n**宏观数据（EDB）**：")
             for k, v in _iter_fields(self.edb):
@@ -452,8 +461,9 @@ class MarketEnvData:
             for k, v in r.items():
                 if k in ("name", "code") or k in _TABLE_META_KEYS:
                     continue
-                if v and v.strip():
-                    fields.append({"name": k, "value": v, "unit": ""})
+                s = "" if v is None else str(v).strip()
+                if s:
+                    fields.append({"name": k, "value": s, "unit": ""})
             indexes.append({"name": idx_name, "code": idx_code, "fields": fields})
         edb = [{"name": k, "value": v}
                for k, v in _iter_fields(self.edb)]

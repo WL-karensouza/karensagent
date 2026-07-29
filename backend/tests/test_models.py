@@ -259,6 +259,39 @@ def test_market_env_data_model():
     print(f"[OK] MarketEnvData: {data.record_count} records + {data.edb_count} edb")
 
 
+def test_iter_fields_numeric_and_zero():
+    """iFind 可能返回数值型：不抛 AttributeError，且合法 0 值不得丢弃"""
+    from stock_agent.models import _iter_fields
+
+    records = [{
+        "毛利率": 89.76,        # float
+        "营收增速": 0,           # 合法零值，必须保留
+        "净利润": 0.0,           # 合法零值，必须保留
+        "空串": "",             # 空值丢弃
+        "空值": None,           # None 丢弃
+        "证券代码": "600519",    # 元数据列跳过
+    }]
+    fields = dict(_iter_fields(records))
+    assert fields["毛利率"] == "89.76"
+    assert fields["营收增速"] == "0"
+    assert fields["净利润"] == "0.0"
+    assert "空串" not in fields
+    assert "空值" not in fields
+    assert "证券代码" not in fields
+
+
+def test_first_of_numeric_value():
+    """_first_of 对数值型字段应安全转 str 返回"""
+    from stock_agent.models import NewsEventsData
+
+    record = {"日期": 20260717, "资讯标题": "测试标题"}
+    time_val = NewsEventsData._first_of(record, "日期", "time")
+    assert time_val == "20260717"
+    # 0 值也算非空
+    record2 = {"date": 0}
+    assert NewsEventsData._first_of(record2, "date") == "0"
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("TDD Step 3: Pydantic 数据模型测试")
