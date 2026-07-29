@@ -9,10 +9,13 @@ import warnings
 from pathlib import Path
 
 # 禁用 SSL 警告（call.py 使用 verify=False）
+# TODO(security): call.py 的 verify=False 存在 MITM 风险，修复见 Task 11
 warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 SKILL_DIR = str(Path("~/.claude/skills/ifind-finance-data").expanduser())
 if SKILL_DIR not in sys.path:
+    # NOTE: 导入期修改全局 sys.path 是加载用户级共享 skill 的既有机制，
+    # 改 importlib 作用域加载牵动面大，暂保留（见实施计划"不修清单"第 3 条）
     sys.path.insert(0, SKILL_DIR)
 
 from call import call as _call, list_tools as _list_tools  # noqa: E402
@@ -57,7 +60,12 @@ def extract_text(result: dict) -> str:
     if not content:
         return "[无数据]"
 
-    raw_text = content[0].get("text", "")
+    # 守卫：MCP 异常响应下 content[0] 可能不是 dict
+    first = content[0]
+    if not isinstance(first, dict):
+        return str(first)
+
+    raw_text = first.get("text", "")
     if not raw_text:
         return "[空响应]"
 
@@ -70,6 +78,8 @@ def extract_text(result: dict) -> str:
         return str(inner)
 
     # 检查内层 code 字段
+    # 约定（Task 2 于 2026-07-29 实证确认）：iFinD 内层 code=0 表示失败/权限不足，
+    # 成功响应 code 为 1（msg='success'）。系统正常运行即依赖此约定，勿按"0=成功"的通用惯例改。
     if inner.get("code") == 0:
         return f"[权限不足或无数据] {inner.get('msg', '')}"
 
@@ -137,6 +147,7 @@ def extract_raw(result: dict):
       {"type": "table",  "tables": [[...], ...]}     — 表格数据
       {"type": "news",   "articles": [{...}, ...]}    — 新闻/公告列表
       {"type": "answer", "text": "..."}               — 自然语言回答（可能内含表格）
+      {"type": "json",   "data": {...}}               — 非表格的结构化 JSON
       {"type": "text",   "text": "..."}               — 纯文本/兜底
       None                                              — 错误或无数据
     """
@@ -148,7 +159,12 @@ def extract_raw(result: dict):
     if not content:
         return None
 
-    raw_text = content[0].get("text", "")
+    # 守卫：MCP 异常响应下 content[0] 可能不是 dict
+    first = content[0]
+    if not isinstance(first, dict):
+        return {"type": "text", "text": str(first)}
+
+    raw_text = first.get("text", "")
     if not raw_text:
         return None
 
@@ -160,7 +176,9 @@ def extract_raw(result: dict):
     if not isinstance(inner, dict):
         return {"type": "text", "text": str(inner)}
 
-    # 检查错误码
+    # 检查内层 code 字段
+    # 约定（Task 2 于 2026-07-29 实证确认）：iFinD 内层 code=0 表示失败/权限不足，
+    # 成功响应 code 为 1（msg='success'）。系统正常运行即依赖此约定，勿按"0=成功"的通用惯例改。
     if inner.get("code") == 0:
         return None
 
