@@ -154,10 +154,14 @@ def normalize_stock_code(stock_code: str) -> str:
 
 
 def _market_suffix(stock_code: str) -> str:
-    """根据股票代码判断交易所后缀"""
+    """根据股票代码判断交易所后缀（仅 A 股；港股走 global_stock 服务不拼后缀）"""
+    if stock_code.endswith(".HK"):
+        # 港股维度用 query_tpl 分支，从不需要后缀；误调用时快速失败，
+        # 防止静默拼出 "2513.HK.SH" 这类错误代码
+        raise ValueError(f"港股代码 {stock_code} 不应走 A 股后缀逻辑（应用 global_stock 服务）")
     if stock_code.startswith(("60", "68")):
         return ".SH"
-    elif stock_code.startswith(("00", "30", "002", "003")):
+    elif stock_code.startswith(("00", "30")):  # 002/003 前缀已被 00 覆盖
         return ".SZ"
     elif stock_code.startswith(("8", "4")):
         return ".BJ"
@@ -176,9 +180,8 @@ def _format_sse(event_type: str, data: dict) -> str:
 
 def _clean_header(h: str) -> str:
     """清洗表头：去除单位括号"""
-    import re as _re
     h = str(h).strip()
-    h = _re.sub(r'[（(]单位[：:][^)）]*[)）]', '', h)
+    h = re.sub(r'[（(]单位[：:][^)）]*[)）]', '', h)  # 复用模块级 re（第 7 行已导入）
     return h
 
 
@@ -712,8 +715,11 @@ async def generate_report_stream(stock_code: str, dimensions: list[str] | None =
                 raise RuntimeError(text)
 
             # performance 维度：基于 OHLCV 自行计算全部技术指标
+            # _enrich_performance 内含东财同步 HTTP，必须丢线程池避免阻塞事件循环
             if dim["key"] == "performance":
-                text = _enrich_performance(text, stock_code)
+                text = await loop.run_in_executor(
+                    None, _enrich_performance, text, stock_code
+                )
 
             report_parts.append(f"## {dim['label']}\n\n{text}")
             raws[dim["key"]] = raw
@@ -750,7 +756,10 @@ async def generate_report_stream(stock_code: str, dimensions: list[str] | None =
             await asyncio.sleep(RATE_LIMIT_INTERVAL)
 
     # 组装完整 Markdown 报告（保留，供投研报告使用）
-    stock_name = _extract_stock_name(raws.get("summary"), stock_code)
+    # _extract_stock_name 兜底走东财同步 HTTP，同样丢线程池
+    stock_name = await loop.run_in_executor(
+        None, _extract_stock_name, raws.get("summary"), stock_code
+    )
     header = f"# {stock_name}（{stock_code}）综合数据报告\n\n"
     header += f"> 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
     if has_critical_failure:
