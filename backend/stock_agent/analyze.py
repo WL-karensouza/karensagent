@@ -261,9 +261,9 @@ def analyze(markdown_report: str) -> tuple[dict, dict]:
 
     content = resp.choices[0].message.content
     reasoning_content = getattr(resp.choices[0].message, 'reasoning_content', None)
-    # 诊断日志
+    # 诊断日志（安全：只记录 key 长度，禁止输出 key 内容，防止日志系统泄密）
     import sys as _sys
-    print(f"[analyze] key={api_key[:15]}... sys_prompt_len={len(build_system_prompt())} user_prompt_len={len(user_prompt)}", file=_sys.stderr)
+    print(f"[analyze] key_len={len(api_key)} sys_prompt_len={len(build_system_prompt())} user_prompt_len={len(user_prompt)}", file=_sys.stderr)
     print(f"[analyze] content_len={len(content) if content else 0} reasoning_len={len(reasoning_content) if reasoning_content else 0} finish_reason={resp.choices[0].finish_reason}", file=_sys.stderr)
     usage = {
         "prompt": resp.usage.prompt_tokens,

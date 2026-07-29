@@ -176,6 +176,34 @@ def test_analyze_validates_whitespace():
     print("[OK] analyze 数据守卫：空白报告时抛出 DataIncompleteError")
 
 
+def test_analyze_stderr_does_not_leak_api_key(monkeypatch, capsys):
+    """诊断日志禁止包含 API key 的任何片段（只允许记录长度等元数据）"""
+    fake_key = "sk-testkey-1234567890abcdef"
+    monkeypatch.setenv("DEEPSEEK_API_KEY", fake_key)
+
+    from stock_agent.analyze import analyze
+
+    with patch('stock_agent.analyze.OpenAI') as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_completion = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.message.content = '{"score":75,"decision":"看多"}'
+        mock_choice.finish_reason = "stop"
+        mock_completion.choices = [mock_choice]
+        mock_completion.usage.prompt_tokens = 10
+        mock_completion.usage.completion_tokens = 10
+        mock_completion.usage.total_tokens = 20
+        mock_client.chat.completions.create.return_value = mock_completion
+
+        analyze("# 测试报告\n有内容")
+
+    err = capsys.readouterr().err
+    assert fake_key not in err, "API key 完整泄漏到 stderr"
+    assert fake_key[:15] not in err, "API key 前缀泄漏到 stderr"
+    assert "key_len=" in err, "应改为只记录 key 长度"
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("TDD Step 5: analyze.py 测试 (v2 9模块)")
