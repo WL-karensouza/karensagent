@@ -80,7 +80,15 @@
       "Bash(python -m pytest tests/test_hk_stock_support.py::test_extract_text_flags_out_of_scope --capture=no -q)",
       "Bash(python -m pytest tests/test_hk_stock_support.py::test_hk_stock_name_extracted_from_profile_table --capture=no -q)",
       "Bash(python -m pytest tests/ --capture=no -q --deselect tests/test_stock_api.py::test_push_report_endpoint_accepts_valid_id)",
-      "Bash(python -m pytest tests/test_hk_stock_support.py::test_news_dimensions_carry_time_range --capture=no -q)"
+      "Bash(python -m pytest tests/test_hk_stock_support.py::test_news_dimensions_carry_time_range --capture=no -q)",
+      "Bash(git log *)",
+      "Bash(\"C:/Users/王磊/.claude/skills/subagent-driven-development/scripts/task-brief\" \"docs/superpowers/plans/2026-07-29-stock-agent-code-review-fixes.md\" 1)",
+      "Bash(python -m pytest tests/test_analyze.py::test_analyze_stderr_does_not_leak_api_key -v)",
+      "Bash(python tests/probe_code_convention.py)",
+      "Bash(python -m pytest tests/test_analyze.py -v)",
+      "Bash(git add *)",
+      "Bash(\"C:/Users/王磊/.claude/skills/subagent-driven-development/scripts/task-brief\" \"docs/superpowers/plans/2026-07-29-stock-agent-code-review-fixes.md\" 3)",
+      "Bash(python -m pytest tests/test_skill_extract.py -v)"
     ]
   },
   "hooks": {
