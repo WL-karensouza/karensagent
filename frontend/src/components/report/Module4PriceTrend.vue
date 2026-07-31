@@ -59,13 +59,11 @@ defineProps({
   padding: 12px 16px;
   border-radius: var(--radius-md);
 }
-.m4-flow-item.margin {
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-}
+/* 两融/主力资金项中性化，靠标签文字区分 */
+.m4-flow-item.margin,
 .m4-flow-item.force {
-  background: #f3e8ff;
-  border: 1px solid #e9d5ff;
+  background: var(--sent-bg);
+  border: 1px solid var(--border-color);
 }
 .m4-flow-label {
   flex-shrink: 0;
@@ -75,8 +73,7 @@ defineProps({
   border-radius: var(--radius-sm);
   white-space: nowrap;
 }
-.margin .m4-flow-label { background: #dbeafe; color: #1e40af; }
-.force .m4-flow-label { background: #ede9fe; color: #6b21a8; }
+.m4-flow-label { background: var(--bg-card); color: var(--sent-strong); border: 1px solid var(--border-color); }
 .m4-flow-text {
   font-size: 0.83rem;
   color: var(--text-secondary);

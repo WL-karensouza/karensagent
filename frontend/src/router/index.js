@@ -42,13 +42,6 @@ const routes = [
     meta: { agent: 'stock', title: '股票分析 · 配置管理' },
   },
 
-  /* ── PROTOTYPE（一次性）：投研报告页改版，验证完即删 ── */
-  {
-    path: '/prototype/report-redesign',
-    component: () => import('../views/prototype/ReportRedesignPrototype.vue'),
-    meta: { title: '原型 · 报告改版' },
-  },
-
   /* ── 平台全局设置 ── */
   {
     path: '/settings',

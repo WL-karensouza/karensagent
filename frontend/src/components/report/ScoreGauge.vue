@@ -1,10 +1,12 @@
 <!-- SVG 环形评分仪表盘（方案4） -->
 <script setup>
 import { computed } from 'vue'
+import { verdictColor } from '../../utils/stock.js'
 
 const props = defineProps({
   score: { type: Number, required: true },
   size: { type: Number, default: 140 },
+  decision: { type: String, default: '' },
 })
 
 const radius = computed(() => (props.size - 14) / 2)
@@ -14,13 +16,8 @@ const viewBoxStr = computed(() => `0 0 ${props.size} ${props.size}`)
 const center = computed(() => props.size / 2)
 const transformStr = computed(() => `rotate(-90 ${center.value} ${center.value})`)
 
-/* 渐变色：红(<40) → 黄(40-70) → 绿(>70) */
-const gaugeColor = computed(() => {
-  const s = props.score
-  if (s < 40) return '#Ef4444'
-  if (s < 70) return '#F59E0B'
-  return '#10B981'
-})
+/* 环与中心数字颜色：按决策方向涨红跌绿（替代原红黄绿渐变） */
+const gaugeColor = computed(() => verdictColor(props.decision))
 </script>
 
 <template>

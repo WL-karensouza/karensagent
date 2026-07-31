@@ -19,11 +19,11 @@ defineProps({
 
     <!-- 参考价位 -->
     <div v-if="data.reference_prices" class="m1-prices">
-      <span v-if="data.reference_prices.support" class="m1-price support">
-        🟢 支撑位：{{ data.reference_prices.support }}
+      <span v-if="data.reference_prices.support" class="m1-price">
+        <span style="color: var(--red)">↑</span> 支撑位：{{ data.reference_prices.support }}
       </span>
-      <span v-if="data.reference_prices.resistance" class="m1-price resistance">
-        🔴 压力位：{{ data.reference_prices.resistance }}
+      <span v-if="data.reference_prices.resistance" class="m1-price">
+        <span style="color: var(--green)">↓</span> 压力位：{{ data.reference_prices.resistance }}
       </span>
     </div>
   </div>
@@ -34,12 +34,12 @@ defineProps({
 .m1-block {
   margin-bottom: 24px;
 }
+/* 一句话评级：中性底，去左竖杠，四角圆角 */
 .m1-rating {
   padding: 20px 24px;
   margin: 0;
-  background: var(--bg-subtle, #f8f7f4);
-  border-left: 3px solid var(--accent, #D97706);
-  border-radius: 0 var(--radius-sm, 8px) var(--radius-sm, 8px) 0;
+  background: var(--sent-bg);
+  border-radius: var(--radius-sm, 8px);
 }
 .m1-rating p {
   margin: 0;
@@ -69,14 +69,10 @@ defineProps({
   border-radius: var(--radius-md, 12px);
   font-weight: 500;
 }
-.m1-price.support {
-  background: #ecfdf5;
-  color: #065f46;
-  border: 1px solid #a7f3d0;
-}
-.m1-price.resistance {
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
+/* 支撑/压力 chip 统一中性底，箭头颜色由内联 style 给 */
+.m1-price {
+  background: var(--bg-card);
+  color: var(--sent-strong);
+  border: 1px solid var(--border-color);
 }
 </style>

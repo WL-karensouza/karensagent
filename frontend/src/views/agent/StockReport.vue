@@ -2,7 +2,7 @@
 import { onMounted, computed, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useStockStore } from '../../stores/stock.js'
-import { scoreColor } from '../../utils/stock.js'
+import { verdictColor } from '../../utils/stock.js'
 import ScoreGauge from '../../components/report/ScoreGauge.vue'
 import DecisionBadge from '../../components/report/DecisionBadge.vue'
 import Module1CoreConclusion from '../../components/report/Module1CoreConclusion.vue'
@@ -16,6 +16,7 @@ import RiskWarningList from '../../components/report/RiskWarningList.vue'
 import HoldingAdviceCard from '../../components/report/HoldingAdviceCard.vue'
 import SignalAttribution from '../../components/report/SignalAttribution.vue'
 import ReportMeta from '../../components/report/ReportMeta.vue'
+import AiChatPanel from '../../components/report/AiChatPanel.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -81,74 +82,91 @@ async function handlePush() {
       <p>报告不存在</p>
     </div>
 
+    <!-- 两列布局：左报告 + 右 AI 助理；v-else-if 须与上方加载/错误/空态块同级，故 layout 置于其内 -->
     <template v-else-if="reportData">
-      <!-- ===== 评分概览区 ===== -->
-      <div class="score-card">
-        <ScoreGauge :score="reportData.score" :size="130" />
-        <div class="score-info">
-          <DecisionBadge :decision="reportData.decision" />
-          <p class="score-desc">
-            综合评分 <strong :style="{ color: scoreColor(reportData.score) }">{{ reportData.score }}</strong> / 100
-          </p>
-          <button class="btn-search" @click="handlePush">📤 推送飞书</button>
+      <div class="report-layout">
+        <!-- 左列：报告主体 -->
+        <div class="report-main">
+          <!-- ===== 评分概览区 ===== -->
+          <div class="score-card">
+            <ScoreGauge :score="reportData.score" :size="130" :decision="reportData.decision" />
+            <div class="score-info">
+              <DecisionBadge :decision="reportData.decision" />
+              <p class="score-desc">
+                综合评分 <strong :style="{ color: verdictColor(reportData.decision) }">{{ reportData.score }}</strong> / 100
+              </p>
+              <button class="btn-search" @click="handlePush">📤 推送飞书</button>
+            </div>
+          </div>
+
+          <!-- ===== 模块1：核心结论与操作建议 ===== -->
+          <Module1CoreConclusion :data="reportData.module_1_核心结论" />
+
+          <!-- ===== 模块2：公司画像与估值定位 ===== -->
+          <Module2CompanyProfile :data="reportData.module_2_公司画像" />
+
+          <!-- ===== 模块3：财务健康状况 ===== -->
+          <Module3FinancialHealth :data="reportData.module_3_财务健康" />
+
+          <!-- ===== 模块4：股价走势与资金动向 ===== -->
+          <Module4PriceTrend :data="reportData.module_4_股价走势" />
+
+          <!-- ===== 模块5：北向资金/主力拆解 ===== -->
+          <Module5Northbound :data="reportData.module_5_北向资金" />
+
+          <!-- ===== 模块6：股东结构与筹码集中度 ===== -->
+          <Module6Shareholders :data="reportData.module_6_股东筹码" />
+
+          <!-- ===== 模块7：催化剂与近期舆情 ===== -->
+          <CatalystList :data="reportData.module_7_催化舆情" />
+
+          <!-- ===== 模块8：风险评估与ESG表现 ===== -->
+          <RiskWarningList :data="reportData.module_8_风险ESG" />
+
+          <!-- ===== 模块9：散户实战操作指南 ===== -->
+          <HoldingAdviceCard :data="reportData.module_9_操作指南" />
+
+          <!-- ===== 信号归因 ===== -->
+          <SignalAttribution :attribution="reportData.signal_attribution" />
+
+          <!-- ===== 元信息 ===== -->
+          <ReportMeta
+            :created-at="store.currentReport.created_at"
+            :token-used="store.currentReport.token_used"
+          />
         </div>
-      </div>
 
-      <!-- ===== 模块1：核心结论与操作建议 ===== -->
-      <Module1CoreConclusion :data="reportData.module_1_核心结论" />
-
-      <!-- ===== 模块2：公司画像与估值定位 ===== -->
-      <Module2CompanyProfile :data="reportData.module_2_公司画像" />
-
-      <!-- ===== 模块3：财务健康状况 ===== -->
-      <Module3FinancialHealth :data="reportData.module_3_财务健康" />
-
-      <!-- ===== 模块4：股价走势与资金动向 ===== -->
-      <Module4PriceTrend :data="reportData.module_4_股价走势" />
-
-      <!-- ===== 模块5：北向资金/主力拆解 ===== -->
-      <Module5Northbound :data="reportData.module_5_北向资金" />
-
-      <!-- ===== 模块6：股东结构与筹码集中度 ===== -->
-      <Module6Shareholders :data="reportData.module_6_股东筹码" />
-
-      <!-- ===== 模块7：催化剂与近期舆情 ===== -->
-      <CatalystList :data="reportData.module_7_催化舆情" />
-
-      <!-- ===== 模块8：风险评估与ESG表现 ===== -->
-      <RiskWarningList :data="reportData.module_8_风险ESG" />
-
-      <!-- ===== 模块9：散户实战操作指南 ===== -->
-      <HoldingAdviceCard :data="reportData.module_9_操作指南" />
-
-      <!-- ===== 信号归因 ===== -->
-      <SignalAttribution :attribution="reportData.signal_attribution" />
-
-      <!-- ===== 元信息 ===== -->
-      <ReportMeta
-        :created-at="store.currentReport.created_at"
-        :token-used="store.currentReport.token_used"
-      />
-
-      <!-- 追问输入框（v2 功能占位） -->
-      <div class="followup-box">
-        <input
-          class="followup-input"
-          type="text"
-          placeholder="💬 对报告内容有疑问？在此追问 AI（即将上线）"
-          disabled
-        />
-        <button class="btn-search" disabled>发送</button>
-      </div>
+        <!-- 右列：AI 问答助理（sticky 吸附） -->
+        <aside class="report-side">
+          <AiChatPanel />
+        </aside>
+        </div>
     </template>
   </div>
 </template>
 
 <style scoped>
+/* 报告页：去除居中限宽，改由两列布局控制 */
 .report-page {
-  max-width: 860px;
-  margin: 0 auto;
   padding: 32px 0 60px;
+}
+
+/* 两列骨架：左报告 + 右 360px sticky AI 面板 */
+.report-layout { display: flex; gap: 32px; align-items: flex-start; }
+.report-main { flex: 1; min-width: 0; max-width: 792px; }
+.report-side {
+  width: 360px;
+  flex-shrink: 0;
+  position: sticky;
+  top: calc(var(--topnav-height, 64px) + 24px);
+  max-height: calc(100vh - var(--topnav-height, 64px) - 48px);
+  overflow: auto;
+}
+/* 窄屏堆叠：与全局 .main-content 的 1280px 断点对齐 */
+@media (max-width: 1280px) {
+  .report-layout { flex-direction: column; }
+  .report-main { max-width: 860px; }
+  .report-side { width: 100%; max-width: 860px; position: static; max-height: none; }
 }
 
 /* 返回按钮 */
@@ -231,26 +249,4 @@ async function handlePush() {
 .btn-search:hover { border-color: var(--accent); color: var(--accent); }
 .btn-search:disabled { opacity: 0.45; cursor: not-allowed; }
 
-/* 追问输入框 */
-.followup-box {
-  display: flex;
-  gap: 10px;
-  margin-top: 24px;
-  padding: 16px 20px;
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-}
-.followup-input {
-  flex: 1;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  padding: 10px 14px;
-  font-size: 0.85rem;
-  font-family: inherit;
-  color: var(--text-primary);
-  background: var(--bg-subtle);
-  outline: none;
-}
-.followup-input:disabled { color: var(--text-muted); cursor: not-allowed; }
 </style>

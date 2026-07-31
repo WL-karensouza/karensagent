@@ -1,5 +1,7 @@
 <!-- 信号归因权重表 -->
 <script setup>
+import { attrColor } from '../../utils/stock.js'
+
 defineProps({
   attribution: { type: Array, default: () => [] },
 })
@@ -16,12 +18,12 @@ defineProps({
             class="attr-bar"
             :style="{
               width: (item.weight * 100) + '%',
-              background: item.direction === '偏多' ? '#10B981' : item.direction === '偏空' ? '#EF4444' : '#9CA3AF'
+              background: attrColor(item.direction)
             }"
           ></div>
         </div>
         <span class="attr-weight">{{ (item.weight * 100).toFixed(0) }}%</span>
-        <span class="attr-dir" :class="'dir-' + (item.direction === '偏多' ? 'up' : item.direction === '偏空' ? 'down' : 'flat')">
+        <span class="attr-dir" :style="{ color: attrColor(item.direction) }">
           {{ item.direction }}
         </span>
       </div>
@@ -94,9 +96,8 @@ defineProps({
   padding: 1px 6px;
   border-radius: 4px;
 }
-.dir-up { background: #ecfdf5; color: #065f46; }
-.dir-down { background: #fef2f2; color: #991b1b; }
-.dir-flat { background: #f3f4f6; color: #6b7280; }
+/* 方向文字色由内联 style 给，标签统一中性底 */
+.attr-dir { background: var(--sent-bg); }
 
 .attr-notes {
   display: flex;
@@ -109,6 +110,6 @@ defineProps({
 }
 .attr-note::before {
   content: '• ';
-  color: var(--accent);
+  color: var(--sent-mid);
 }
 </style>

@@ -1,18 +1,9 @@
 <!-- 模块2：公司画像与估值定位 -->
 <script setup>
-import { computed } from 'vue'
+import { peLevelSym, peLevelColor } from '../../utils/stock.js'
 
-const props = defineProps({
+defineProps({
   data: { type: Object, default: () => ({}) },
-})
-
-const peTheme = computed(() => {
-  const map = { '偏低': 'low', '合理': 'fair', '偏高': 'high', '极度偏高': 'extreme' }
-  return map[props.data?.valuation?.pe_level] || 'fair'
-})
-const pbTheme = computed(() => {
-  const map = { '偏低': 'low', '合理': 'fair', '偏高': 'high', '极度偏高': 'extreme' }
-  return map[props.data?.valuation?.pb_level] || 'fair'
 })
 </script>
 
@@ -27,11 +18,11 @@ const pbTheme = computed(() => {
     <div v-if="data.valuation && Object.keys(data.valuation).length" class="m2-val">
       <div class="m2-val-row">
         <span class="m2-val-label">PE 估值水位</span>
-        <span class="m2-val-tag" :class="'tag-' + peTheme">{{ data.valuation.pe_level || 'N/A' }}</span>
+        <span class="m2-val-tag" :style="{ color: peLevelColor(data.valuation.pe_level) }">{{ peLevelSym(data.valuation.pe_level) }} {{ data.valuation.pe_level || 'N/A' }}</span>
       </div>
       <div class="m2-val-row">
         <span class="m2-val-label">PB 估值水位</span>
-        <span class="m2-val-tag" :class="'tag-' + pbTheme">{{ data.valuation.pb_level || 'N/A' }}</span>
+        <span class="m2-val-tag" :style="{ color: peLevelColor(data.valuation.pb_level) }">{{ peLevelSym(data.valuation.pb_level) }} {{ data.valuation.pb_level || 'N/A' }}</span>
       </div>
       <p v-if="data.valuation.analysis" class="m2-analysis">{{ data.valuation.analysis }}</p>
     </div>
@@ -81,10 +72,8 @@ const pbTheme = computed(() => {
   padding: 3px 12px;
   border-radius: var(--radius-sm, 6px);
 }
-.tag-low { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-.tag-fair { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
-.tag-high { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
-.tag-extreme { background: #fef2f2; color: #7f1d1d; border: 1px solid #f87171; }
+/* 估值水位 tag 统一中性底，方向色由内联 style 给 */
+.m2-val-tag { background: var(--sent-bg); border: 1px solid var(--border-color); }
 .m2-analysis {
   margin: 4px 0 0;
   font-size: 0.84rem;

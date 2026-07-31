@@ -1,51 +1,33 @@
-<!-- 多空判断徽章（方案4） -->
+<!-- 多空判断徽章：中性底 + 边框，方向由符号颜色承担（去 emoji 与彩色底） -->
 <script setup>
-import { computed } from 'vue'
+import { verdictColor, verdictSym } from '../../utils/stock.js'
 
-const props = defineProps({
+defineProps({
   decision: { type: String, required: true },
-})
-
-const config = computed(() => {
-  const map = {
-    '看多': { icon: '🟢', class: 'badge-bull', label: '看多' },
-    '震荡': { icon: '🟡', class: 'badge-neutral', label: '震荡' },
-    '看空': { icon: '🔴', class: 'badge-bear', label: '看空' },
-  }
-  return map[props.decision] || { icon: '⚪', class: 'badge-neutral', label: props.decision || '未知' }
 })
 </script>
 
 <template>
-  <span class="decision-badge" :class="config.class">
-    {{ config.icon }} {{ config.label }}
+  <span v-if="decision" class="decision-badge">
+    <span class="dec-sym" :style="{ color: verdictColor(decision) }">{{ verdictSym(decision) }}</span>
+    {{ decision }}
   </span>
 </template>
 
 <style scoped>
+/* 决策徽章：中性底 + 边框，方向由符号颜色承担 */
 .decision-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   padding: 5px 14px;
-  border-radius: var(--radius-md, 12px);
-  font-size: 0.88rem;
-  font-weight: 600;
+  border-radius: 999px;
+  background: var(--sent-bg);
+  border: 1px solid var(--border-color);
+  color: var(--sent-strong);
+  font-size: 0.82rem;
+  font-weight: 700;
   letter-spacing: 0.02em;
 }
-.badge-bull {
-  background: #ecfdf5;
-  color: #065f46;
-  border: 1px solid #a7f3d0;
-}
-.badge-neutral {
-  background: #fffbeb;
-  color: #92400e;
-  border: 1px solid #fde68a;
-}
-.badge-bear {
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
-}
+.dec-sym { font-weight: 700; }
 </style>

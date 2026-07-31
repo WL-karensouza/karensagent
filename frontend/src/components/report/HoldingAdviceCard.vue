@@ -74,9 +74,10 @@ defineProps({
   border-radius: var(--radius-md);
   align-items: flex-start;
 }
-.m9-col.buy { background: #eff6ff; border: 1px solid #bfdbfe; }
-.m9-col.stop { background: #fef2f2; border: 1px solid #fecaca; }
-.m9-col.profit { background: #ecfdf5; border: 1px solid #a7f3d0; }
+/* 三栏中性化：操作档位非多空信号，统一中性底 */
+.m9-col.buy,
+.m9-col.stop,
+.m9-col.profit { background: var(--sent-bg); border: 1px solid var(--border-color); }
 .m9-col-icon {
   font-size: 1.1rem;
   flex-shrink: 0;
@@ -89,9 +90,7 @@ defineProps({
   display: block;
   margin-bottom: 4px;
 }
-.buy .m9-col-label { color: #1e40af; }
-.stop .m9-col-label { color: #991b1b; }
-.profit .m9-col-label { color: #065f46; }
+.m9-col-label { color: var(--sent-strong); }
 .m9-col-text {
   margin: 0;
   font-size: 0.83rem;
@@ -103,22 +102,23 @@ defineProps({
   align-items: baseline;
   gap: 12px;
   padding: 12px 18px;
-  background: #fffbeb;
-  border: 1px solid #fde68a;
+  background: var(--sent-bg);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
 }
 .m9-holding-tag {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #92400e;
+  color: var(--sent-strong);
   padding: 3px 12px;
-  background: #fef3c7;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 .m9-holding-reason {
   font-size: 0.83rem;
-  color: #78350f;
+  color: var(--sent-mid);
   line-height: 1.6;
 }
 </style>

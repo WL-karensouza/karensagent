@@ -1,5 +1,7 @@
 <!-- 模块3：财务健康状况 -->
 <script setup>
+import { finTrendColor } from '../../utils/stock.js'
+
 defineProps({
   data: { type: Object, default: () => ({}) },
 })
@@ -28,10 +30,7 @@ defineProps({
             <td class="m3-td-name">{{ ind.name }}</td>
             <td class="m3-td-val">{{ ind.value }}</td>
             <td>
-              <span class="m3-trend" :class="{
-                'trend-up': ind.trend && (ind.trend.includes('上升') || ind.trend.includes('改善')),
-                'trend-down': ind.trend && (ind.trend.includes('下滑') || ind.trend.includes('恶化')),
-              }">{{ ind.trend }}</span>
+              <span class="m3-trend" :style="{ color: finTrendColor(ind.trend) }">{{ ind.trend }}</span>
             </td>
             <td class="m3-td-verdict">{{ ind.verdict }}</td>
           </tr>
@@ -105,18 +104,17 @@ defineProps({
   background: #f3f4f6;
   color: var(--text-muted);
 }
-.trend-up { background: #ecfdf5; color: #065f46; }
-.trend-down { background: #fef2f2; color: #991b1b; }
+/* 趋势 chip 中性底，方向色由内联 style 给 */
 .m3-alerts {
   padding: 14px 18px;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--sent-bg);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
 }
 .m3-alert-title {
   font-size: 0.82rem;
   font-weight: 600;
-  color: #991b1b;
+  color: var(--sent-strong);
   margin: 0 0 8px;
 }
 .m3-alerts ul {
@@ -125,7 +123,7 @@ defineProps({
 }
 .m3-alerts li {
   font-size: 0.81rem;
-  color: #7f1d1d;
+  color: var(--sent-mid);
   margin: 4px 0;
   line-height: 1.6;
 }

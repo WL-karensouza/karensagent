@@ -67,9 +67,11 @@ defineProps({
   padding: 3px 10px;
   border-radius: var(--radius-sm);
 }
-.level-low { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-.level-mid { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
-.level-high { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+/* 风险等级中性底，严重度由文字灰阶深浅区分（不上红绿） */
+.m8-level-tag { background: var(--sent-bg); border: 1px solid var(--border-color); }
+.level-low { color: var(--sent-soft); }
+.level-mid { color: var(--sent-mid); }
+.level-high { color: var(--sent-strong); }
 
 .m8-risks {
   display: flex;
@@ -84,9 +86,10 @@ defineProps({
   border-radius: var(--radius-md);
   background: var(--bg-hover, #f9fafb);
 }
-.risk-high { border-left: 3px solid #ef4444; }
-.risk-mid { border-left: 3px solid #f59e0b; }
-.risk-low { border-left: 3px solid #10b981; }
+/* 风险条目左侧条中性灰阶（高深/中/低浅），不用彩色 */
+.risk-high { border-left: 3px solid var(--sent-strong); }
+.risk-mid { border-left: 3px solid var(--sent-mid); }
+.risk-low { border-left: 3px solid var(--sent-soft); }
 .m8-risk-badge {
   flex-shrink: 0;
   width: 22px;
@@ -99,9 +102,11 @@ defineProps({
   justify-content: center;
   margin-top: 1px;
 }
-.badge-high { background: #fef2f2; color: #dc2626; }
-.badge-mid { background: #fffbeb; color: #d97706; }
-.badge-low { background: #ecfdf5; color: #059669; }
+/* 风险徽章中性底，严重度由文字灰阶区分 */
+.m8-risk-badge { background: var(--sent-bg); }
+.badge-high { color: var(--sent-strong); }
+.badge-mid { color: var(--sent-mid); }
+.badge-low { color: var(--sent-soft); }
 .m8-risk-body {
   flex: 1;
   min-width: 0;
@@ -120,9 +125,8 @@ defineProps({
 .m8-esg {
   padding: 16px 20px;
   margin: 0;
-  background: var(--bg-subtle, #f8f7f4);
-  border-left: 3px solid var(--accent, #D97706);
-  border-radius: 0 var(--radius-sm, 8px) var(--radius-sm, 8px) 0;
+  background: var(--sent-bg);
+  border-radius: var(--radius-sm, 8px);
 }
 .m8-esg p {
   margin: 0;

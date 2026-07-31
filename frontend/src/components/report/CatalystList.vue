@@ -1,5 +1,7 @@
 <!-- 模块7：催化剂与近期舆情 -->
 <script setup>
+import { sentimentColor } from '../../utils/stock.js'
+
 defineProps({
   data: { type: Object, default: () => ({}) },
 })
@@ -11,11 +13,7 @@ defineProps({
 
     <!-- 舆情风向标 -->
     <div v-if="data.sentiment" class="m7-sentiment">
-      <span class="m7-sentiment-tag" :class="{
-        'sent-positive': data.sentiment === '偏乐观',
-        'sent-cautious': data.sentiment === '偏谨慎',
-        'sent-neutral': data.sentiment === '中性',
-      }">{{ data.sentiment }}</span>
+      <span class="m7-sentiment-tag" :style="{ color: sentimentColor(data.sentiment) }">{{ data.sentiment }}</span>
       <span v-if="data.sentiment_reason" class="m7-sentiment-reason">{{ data.sentiment_reason }}</span>
     </div>
 
@@ -69,9 +67,8 @@ defineProps({
   border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
-.sent-positive { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
-.sent-cautious { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
-.sent-neutral { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
+/* 舆情风向标 tag 中性底，方向色由内联 style 给 */
+.m7-sentiment-tag { background: var(--sent-bg); border: 1px solid var(--border-color); }
 .m7-sentiment-reason {
   font-size: 0.82rem;
   color: var(--text-muted);
@@ -85,21 +82,19 @@ defineProps({
   padding: 16px 18px;
   border-radius: var(--radius-md);
 }
-.m7-col.positive {
-  background: #ecfdf5;
-  border: 1px solid #a7f3d0;
-}
+/* 利好/利空两栏中性底，方向色落在标题与列表项 */
+.m7-col.positive,
 .m7-col.negative {
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--sent-bg);
+  border: 1px solid var(--border-color);
 }
 .m7-col-title {
   font-size: 0.82rem;
   font-weight: 600;
   margin: 0 0 8px;
 }
-.positive .m7-col-title { color: #065f46; }
-.negative .m7-col-title { color: #991b1b; }
+.positive .m7-col-title { color: var(--red); }
+.negative .m7-col-title { color: var(--green); }
 .m7-col ul {
   margin: 0;
   padding-left: 18px;
@@ -109,6 +104,6 @@ defineProps({
   margin: 4px 0;
   line-height: 1.6;
 }
-.positive li { color: #064e3b; }
-.negative li { color: #7f1d1d; }
+.positive li { color: var(--red); }
+.negative li { color: var(--green); }
 </style>
