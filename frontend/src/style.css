@@ -18,6 +18,11 @@
   --green: #166534;
   --green-light: #DCFCE7;
   --red: #DC2626;
+  /* 报告页中性灰阶语义 token：去装饰彩色后的层级用色 */
+  --sent-strong: #2D2A26; /* 强调：近黑，同 --text-primary */
+  --sent-mid:    #8B857B; /* 中间：暖中灰 */
+  --sent-soft:   #B9B2A6; /* 弱化：暖浅灰 */
+  --sent-bg:     #F4F1EB; /* 中性块底：替代原各色背景块 */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 20px;
