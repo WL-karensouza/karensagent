@@ -17,6 +17,9 @@ venv/
 # 临时文件
 temp/
 
+# LLM 解析失败语料（本地回放用，不进版本库）
+backend/stock_agent/reports/failures/
+
 # 前端
 node_modules/
 dist/

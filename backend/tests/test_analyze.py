@@ -245,12 +245,199 @@ def test_parse_json_two_blocks_takes_first_complete():
     assert report["score"] == 70
 
 
+def test_parse_json_invalid_control_character():
+    """字符串内含裸换行（未转义控制字符）→ 宽松模式解析（E2 实验 000938 挖出的真实缺陷）"""
+    from stock_agent.analyze import _parse_json
+
+    raw = '{"score": 70, "desc": "第一行\n第二行"}'  # 字符串内是真实换行符，严格模式必炸
+    report = _parse_json(raw)
+    assert report["score"] == 70
+    assert "第一行" in report["desc"] and "第二行" in report["desc"]
+    print("[OK] _parse_json 宽松模式：字符串裸控制字符")
+
+
+def test_parse_json_unterminated_string():
+    """截断在字符串内部（Unterminated string）→ 闭合字符串 + 补全括号（E2 实验真实故障）"""
+    from stock_agent.analyze import _parse_json
+
+    # 模拟 finish_reason=length 截断：desc 字符串写到一半被切断
+    raw = '{"score": 70, "decision": "看多", "desc": "这段分析写到一半被截'
+    report = _parse_json(raw)
+    assert report["score"] == 70
+    assert report["decision"] == "看多"
+    assert "被截" in report["desc"]  # 截断前的内容应保留
+    print("[OK] 未闭合字符串：闭合 + 括号补全")
+
+
+def test_parse_json_unterminated_string_in_array():
+    """截断在数组内的字符串 → 闭合后括号补全，数组已闭合元素保留"""
+    from stock_agent.analyze import _parse_json
+
+    raw = '{"score": 60, "list": ["完整项", "半截'
+    report = _parse_json(raw)
+    assert report["score"] == 60
+    assert report["list"] == ["完整项", "半截"]  # 闭合后半截项也保留
+    print("[OK] 数组内未闭合字符串")
+
+
+def test_parse_json_control_char_plus_trailing_comma():
+    """复合故障：裸控制字符 + 尾随逗号 → 宽松模式 + 尾随逗号策略合力（E2 实验 300369 故障形态）"""
+    from stock_agent.analyze import _parse_json
+
+    raw = '{"score": 55, "desc": "第一行\n第二行",}'  # 裸换行 + 尾随逗号
+    report = _parse_json(raw)
+    assert report["score"] == 55
+    assert "第一行" in report["desc"]
+    print("[OK] 复合故障：控制字符 + 尾随逗号")
+
+
+def test_parse_json_nested_truncation_order():
+    """截断在"数组内嵌对象"深层（signal_attribution 形态）→ 补全顺序必须 }]} 而非 ]}（突变回归挖出的潜伏 bug）"""
+    from stock_agent.analyze import _parse_json
+
+    # 截断在 signal_attribution 数组内的对象中间
+    raw = '{"score": 66, "decision": "震荡", "signal_attribution": [{"source": "估值面", "weight": 0.2}, {"source": "财务面"'
+    report = _parse_json(raw)
+    assert report["score"] == 66
+    assert report["signal_attribution"][0]["weight"] == 0.2  # 已闭合的元素完整保留
+    print("[OK] 深层嵌套截断：栈逆序补全")
+
+
+def test_parse_json_bare_quote_in_string():
+    """字符串内未转义裸引号（LLM 常见缺陷）→ 启发式转义救回（突变回归 0/21 → 21/21 的关键修复）"""
+    from stock_agent.analyze import _parse_json
+
+    # desc 值里含两个未转义的裸引号，结构其余部分完好
+    raw = '{"score": 70, "desc": "这就是所谓"裸引号"的情况", "decision": "看多"}'
+    report = _parse_json(raw)
+    assert report["score"] == 70
+    assert report["decision"] == "看多"  # 裸引号之后的字段仍能救出
+    print("[OK] 裸引号启发式转义")
+
+
+def test_dump_parse_failure_saves_corpus(tmp_path):
+    """解析最终失败时应落盘原文语料（tech-tracker #2，回放工具的输入）"""
+    from stock_agent.analyze import _dump_parse_failure
+
+    _dump_parse_failure('{"score": 坏了的 json', fail_dir=tmp_path)
+    dumps = list(tmp_path.glob("*.txt"))
+    assert len(dumps) == 1
+    assert "坏了的 json" in dumps[0].read_text(encoding="utf-8")
+    print("[OK] 失败语料落盘")
+
+
 def test_extract_outermost_json_helper():
     from stock_agent.analyze import _extract_outermost_json
 
     assert _extract_outermost_json('xx {"a": {"b": 1}} yy') == '{"a": {"b": 1}}'
     assert _extract_outermost_json('没有 JSON') is None
     assert _extract_outermost_json('{"未闭合": 1') is None
+
+
+# ═══════════════════════════════════════════
+# E0 质量层：analyze_with_validation 校验 + 修正
+# ═══════════════════════════════════════════
+
+def _mock_completion(content: str, total: int = 700):
+    """构造 mock LLM 响应（E0/E1 测试共用）"""
+    mock_completion = MagicMock()
+    mock_choice = MagicMock()
+    mock_choice.message.content = content
+    mock_choice.finish_reason = "stop"
+    mock_completion.choices = [mock_choice]
+    mock_completion.usage.prompt_tokens = 500
+    mock_completion.usage.completion_tokens = 200
+    mock_completion.usage.total_tokens = total
+    return mock_completion
+
+
+def test_analyze_passes_history_context_to_prompt():
+    """analyze() 的 history_context 参数应透传进 user prompt（E1 注入链路）"""
+    from stock_agent.analyze import analyze
+
+    with patch('stock_agent.analyze.OpenAI') as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.return_value = _mock_completion(
+            '{"score":75,"decision":"看多"}'
+        )
+
+        analyze("# 测试报告\n有内容", history_context="HISTORY_MARKER_XYZ")
+
+        messages = mock_client.chat.completions.create.call_args[1]["messages"]
+        user_msg = messages[1]["content"]
+        assert "HISTORY_MARKER_XYZ" in user_msg, "历史上下文应注入 user prompt"
+        assert "module_1" in user_msg, "应附带对比引导语"
+    print("[OK] analyze 历史上下文透传")
+
+
+def test_analyze_with_validation_no_repair_when_valid():
+    """报告一次合规 → 不触发修正调用"""
+    import json as _json
+    from stock_agent.analyze import analyze_with_validation
+    from test_validator import make_valid_report
+
+    with patch('stock_agent.analyze.OpenAI') as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.return_value = _mock_completion(
+            _json.dumps(make_valid_report(), ensure_ascii=False)
+        )
+
+        report, usage = analyze_with_validation("# 测试报告\n有内容")
+
+        assert mock_client.chat.completions.create.call_count == 1, "合规报告只应调用一次"
+        assert "_validation_issues" not in report
+        assert usage["total"] == 700
+    print("[OK] analyze_with_validation: 合规不修正")
+
+
+def test_analyze_with_validation_repair_succeeds():
+    """首次违规 + 修正后合规 → 采纳修正版，usage 累积"""
+    import json as _json
+    from stock_agent.analyze import analyze_with_validation
+    from test_validator import make_valid_report
+
+    bad = '{"score":75,"decision":"买入"}'  # 多违规：枚举错 + 缺 9 模块
+    good = _json.dumps(make_valid_report(), ensure_ascii=False)
+
+    with patch('stock_agent.analyze.OpenAI') as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = [
+            _mock_completion(bad, total=700),
+            _mock_completion(good, total=900),
+        ]
+
+        report, usage = analyze_with_validation("# 测试报告\n有内容")
+
+        assert mock_client.chat.completions.create.call_count == 2, "主调用 + 修正调用"
+        assert "_validation_issues" not in report
+        assert report["score"] == 72, "应采纳修正版（make_valid_report 的 score）"
+        assert usage["total"] == 1600, "usage 应累积修正调用成本 700+900"
+    print("[OK] analyze_with_validation: 修正成功 + usage 累积")
+
+
+def test_analyze_with_validation_repair_fails_keeps_original():
+    """修正后仍违规 → 兜底保留原报告，附 _validation_issues，不阻塞"""
+    from stock_agent.analyze import analyze_with_validation
+
+    bad = '{"score":75,"decision":"买入"}'
+    with patch('stock_agent.analyze.OpenAI') as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = [
+            _mock_completion(bad),
+            _mock_completion(bad),
+        ]
+
+        report, usage = analyze_with_validation("# 测试报告\n有内容")
+
+        assert mock_client.chat.completions.create.call_count == 2
+        assert "_validation_issues" in report
+        assert len(report["_validation_issues"]) > 0
+        assert usage["total"] == 1400
+    print("[OK] analyze_with_validation: 修正失败兜底")
 
 
 if __name__ == "__main__":
