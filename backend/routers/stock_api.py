@@ -28,6 +28,10 @@ router = APIRouter(prefix="/api/stock", tags=["stock"])
 _stock_tasks: dict[str, dict] = {}
 _TASK_TTL = 3600  # 1 小时自动清理
 
+# 关键维度（实时行情/基本信息）采集失败的统一提示文案（三个分析入口共用，
+# 括号内维度清单与 report.py 中 critical=True 的维度对应）
+_CRITICAL_FAIL_MSG = "关键数据采集失败（实时行情/基本信息）"
+
 
 def _clean_old_tasks():
     """移除过期任务"""
@@ -87,6 +91,10 @@ def _run_analysis(task_id: str, stock_code: str):
 
         # Step 1: SKILL 采集 10 维度数据 → Markdown 报告
         data_result = generate_report_sync(stock_code)
+        # 关门：关键维度（实时行情/基本信息）失败即硬终止，
+        # 避免拿失败数据调 DeepSeek 并将垃圾报告存库
+        if data_result.get("has_critical_failure"):
+            raise RuntimeError(f"{_CRITICAL_FAIL_MSG}，已终止分析，请稍后重试")
         data_md = data_result["markdown"]
         # 使用归一化后的代码入库（如 HK2513 → 2513.HK）
         stock_code = data_result.get("stock_code", stock_code)
@@ -149,6 +157,9 @@ def _run_watchlist_analyze(task_id: str):
         for code in codes:
             try:
                 data_result = generate_report_sync(code)
+                # 关门：关键维度失败的股票直接标记失败跳过，不浪费 LLM 调用
+                if data_result.get("has_critical_failure"):
+                    raise RuntimeError(_CRITICAL_FAIL_MSG)
                 data_md = data_result["markdown"]
                 stock_name = data_result.get("stock_name", code)
                 report, usage = analyze(data_md)
@@ -383,6 +394,7 @@ async def skill_report_invest(req: AnalyzeRequest):
         report_md = ""
         stock_name = req.stock_code
         dim_count = 0
+        has_critical_failure = False
         async for sse_msg in generate_report_stream(req.stock_code, req.dimensions):
             if '"type": "complete"' in sse_msg:
                 try:
@@ -391,6 +403,7 @@ async def skill_report_invest(req: AnalyzeRequest):
                     payload = _json.loads(data_str)
                     report_md = payload.get("report", "")
                     stock_name = payload.get("stock_name", req.stock_code)
+                    has_critical_failure = bool(payload.get("has_critical_failure"))
                 except Exception:
                     pass
                 continue  # 关键：不要把原始数据的 complete 事件发给前端
@@ -401,6 +414,14 @@ async def skill_report_invest(req: AnalyzeRequest):
 
         if not report_md:
             yield _format_sse_invest("error", {"message": "数据采集失败，无法生成投研报告"})
+            return
+
+        # 关门：关键维度（实时行情/基本信息）失败即硬终止 ——
+        # 不调 DeepSeek、不存库，发 error 事件由前端 Toast 明确提示
+        if has_critical_failure:
+            yield _format_sse_invest("error", {
+                "message": f"{_CRITICAL_FAIL_MSG}，已终止投研分析，请稍后重试",
+            })
             return
 
         # Phase 2: DeepSeek 分析

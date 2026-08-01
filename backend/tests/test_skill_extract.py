@@ -52,6 +52,43 @@ def test_extract_text_normal_path_unchanged():
     assert "贵州茅台" in out
 
 
+def test_extract_text_vendor_soft_error():
+    """厂商软错误（外层 code=1 但 data 是非 JSON 错误文本）应转为 [无数据] 前缀
+
+    实证场景（2026-08-01 两次实测，北交所 830799 高频行情）：
+      - "未找到相关证券指标,请检查代码"（indicators 较少时）
+      - "未解析到主体或指标,请检查输入参数"（indicators 较多时）
+    合法表格数据必为 JSON 字符串，故按"非 JSON 即软错误"统一转换，
+    避免逐个枚举厂商错误文案。
+    """
+    import json
+    from stock_agent.skill import extract_text
+
+    for msg in ("未找到相关证券指标,请检查代码", "未解析到主体或指标,请检查输入参数"):
+        inner = {"code": 1, "msg": "success", "data": msg}
+        result = {"ok": True, "data": {"result": {"content": [
+            {"type": "text", "text": json.dumps(inner, ensure_ascii=False)}
+        ]}}}
+        out = extract_text(result)
+        assert out.startswith("[无数据]"), f"软错误未转换: {out}"
+        assert msg in out
+
+
+def test_extract_text_normal_table_string_unchanged():
+    """正常的 JSON 字符串 data（含 tables）不受软错误守卫影响"""
+    import json
+    from stock_agent.skill import extract_text
+
+    inner = {"code": 1, "msg": "success",
+             "data": json.dumps({"tables": [["最新价"], ["1680.00"]]})}
+    result = {"ok": True, "data": {"result": {"content": [
+        {"type": "text", "text": json.dumps(inner)}
+    ]}}}
+    out = extract_text(result)
+    assert "1680.00" in out
+    assert not out.startswith("[无数据]")
+
+
 def test_extract_text_empty_data_fallback():
     """code 检查通过但 data 为空时，按无数据处理（Task 2 决策树通用项）"""
     import json

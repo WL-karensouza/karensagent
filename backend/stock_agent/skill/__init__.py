@@ -114,7 +114,11 @@ def extract_text(result: dict) -> str:
                 return _format_table(table_data)
             return json.dumps(table_data, ensure_ascii=False, indent=2)
         except (json.JSONDecodeError, TypeError):
-            return inner_data
+            # 厂商软错误：外层 code=1 但 data 是非 JSON 错误文本（实证用例见
+            # test_extract_text_vendor_soft_error）。本分支契约是行情表格 JSON
+            # 字符串，非 JSON 即异常，统一转 [无数据] 供上层判定维度失败。
+            # 注：新闻 data 分支的纯文本属合法数据，不适用此规则
+            return f"[无数据] {inner_data}"
 
     return str(inner_data)
 

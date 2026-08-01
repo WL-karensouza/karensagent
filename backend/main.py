@@ -80,11 +80,9 @@ def health_check():
     ifind_ok = False
     try:
         from stock_agent.skill import call_skill
-        call_skill("stock", "stock_highfreq_quotes", {
-            "symbols": "600519.SH",
-            "indicators": "最新价",
-            "data_mode": "real_time",
-        })
+        # 轻量连通性探测：自然语言单次查询，不依赖高频行情权益，
+        # 避免因用户无高频权益把"服务可达"误判为"未连接"
+        call_skill("stock", "get_stock_info", {"query": "贵州茅台的上市日期"})
         ifind_ok = True
     except Exception:
         pass

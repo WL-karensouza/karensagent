@@ -548,10 +548,10 @@ def _parse_ohlcv_table(answer_text: str) -> dict | None:
     }
 
 
-def _format_indicators_markdown(ohlcv: dict, indicators: dict) -> str:
-    """将技术指标格式化为 Markdown 表格"""
+def _format_indicators_markdown(ohlcv: dict, indicators: dict, source: str = "iFinD") -> str:
+    """将技术指标格式化为 Markdown 表格（标题标注自算 + OHLCV 数据源）"""
     latest_close = ohlcv['closes'][-1]
-    lines = ["### 技术指标（自算，截至最近交易日）", ""]
+    lines = [f"### 技术指标（自算，数据源：{source}，截至最近交易日）", ""]
 
     # ── MA 均线 ──
     lines.append("#### MA 均线")
@@ -660,7 +660,7 @@ def _enrich_performance(answer_text: str, stock_code: str = "") -> str:
         'kdj': _calc_kdj(highs, lows, closes),
     }
 
-    indicator_md = _format_indicators_markdown(ohlcv, indicators)
+    indicator_md = _format_indicators_markdown(ohlcv, indicators, source)
     return answer_text + "\n\n" + indicator_md
 
 
@@ -796,9 +796,12 @@ def generate_report_sync(stock_code: str, dimensions: list[str] | None = None) -
         dimensions: 可选，指定要采集的维度 key 列表；传 None 则采集全部 10 个维度
 
     Returns:
-        {"markdown": str, "stock_code": str, "stock_name": str, "sections": {dim_key: prose, ...}}
+        {"markdown": str, "stock_code": str, "stock_name": str,
+         "sections": {dim_key: prose, ...}, "has_critical_failure": bool}
 
-        stock_code 为归一化后的代码（如 HK2513 → 2513.HK）
+        stock_code 为归一化后的代码（如 HK2513 → 2513.HK）；
+        has_critical_failure 为 True 表示关键维度（实时行情/基本信息）失败，
+        上层应据此硬终止（勿拿失败数据调 LLM）。
     """
     parts = []
     raws = {}
@@ -858,4 +861,5 @@ def generate_report_sync(stock_code: str, dimensions: list[str] | None = None) -
         "stock_code": stock_code,
         "stock_name": stock_name,
         "sections": sections,
+        "has_critical_failure": has_critical_failure,
     }
