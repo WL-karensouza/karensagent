@@ -64,11 +64,12 @@ from stock_agent.prompts import build_system_prompt, build_user_prompt
 # 3. LLM 调用
 # ═══════════════════════════════════════════
 
-def analyze(markdown_report: str) -> tuple[dict, dict]:
+def analyze(markdown_report: str, history_context: str = "") -> tuple[dict, dict]:
     """调用 DeepSeek Reasoner 分析 SKILL 数据报告，返回 (report, usage)。
 
     Args:
         markdown_report: SKILL 生成的 Markdown 格式综合数据报告
+        history_context: 历史报告骨架上下文（E1 历史对比，空串 = 不注入）
     """
     # 数据守卫：报告不能为空
     if not markdown_report or not markdown_report.strip():
@@ -79,7 +80,7 @@ def analyze(markdown_report: str) -> tuple[dict, dict]:
         raise RuntimeError("未设置 DEEPSEEK_API_KEY，请检查 .env 文件")
 
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
-    user_prompt = build_user_prompt(markdown_report)
+    user_prompt = build_user_prompt(markdown_report, history_context)
 
     resp = client.chat.completions.create(
         model="deepseek-v4-flash",
@@ -216,6 +217,111 @@ def _parse_json(raw_text: str, max_retries: int = 2) -> dict:
 
 
 # ═══════════════════════════════════════════
+# 3.5 语义校验 + 定点修正（E0 质量层）
+# ═══════════════════════════════════════════
+
+from stock_agent.validator import validate_report
+
+
+def _repair_report(report: dict, issues: list[str]) -> tuple[dict, dict]:
+    """将违规清单回传 LLM，要求其输出修正后的完整 JSON，返回 (report, usage)
+
+    修正 prompt 只要求修复违规处、禁止改动合规字段；解析失败时向上抛异常，
+    由 analyze_with_validation 兜底保留原报告。
+    """
+    api_key = os.environ.get("DEEPSEEK_API_KEY", "")
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+    issues_text = "\n".join(f"- {issue}" for issue in issues)
+
+    resp = client.chat.completions.create(
+        model="deepseek-v4-flash",
+        messages=[
+            {"role": "system", "content": (
+                "你是 JSON 修正助手。用户会给你一份股票投研报告 JSON 和它违反的规则清单。"
+                "请输出修正后的完整 JSON：只修复违反规则的部分，不要改动合规字段，"
+                "不要输出任何解释文字或 markdown 包裹，只输出纯 JSON。"
+            )},
+            {"role": "user", "content": (
+                f"违反的规则清单：\n{issues_text}\n\n"
+                f"原始报告 JSON：\n{json.dumps(report, ensure_ascii=False)}"
+            )},
+        ],
+        extra_body={"thinking": {"type": "enabled"}},
+        reasoning_effort="high",
+        max_tokens=16384,
+    )
+
+    content = resp.choices[0].message.content
+    reasoning_content = getattr(resp.choices[0].message, 'reasoning_content', None)
+    usage = {
+        "prompt": resp.usage.prompt_tokens,
+        "completion": resp.usage.completion_tokens,
+        "total": resp.usage.total_tokens,
+    }
+
+    # 与主调用相同的剥离逻辑：```json 包裹 / content 为空时兜底 reasoning_content
+    raw_text = content or ""
+    if not raw_text.strip() and reasoning_content:
+        raw_text = reasoning_content
+    if "```json" in raw_text:
+        raw_text = raw_text.split("```json", 1)[1].split("```", 1)[0]
+    elif "```" in raw_text:
+        raw_text = raw_text.split("```", 1)[1].split("```", 1)[0]
+    raw_text = raw_text.strip()
+    if not raw_text:
+        raise RuntimeError("修正调用返回空内容")
+
+    return _parse_json(raw_text), usage
+
+
+def analyze_with_validation(markdown_report: str, stock_code: str = "") -> tuple[dict, dict]:
+    """生成 + 语义校验 + 定点修正 —— 生产管线统一入口（替代裸 analyze 调用）
+
+    流程：
+      0. stock_code 非空 → 载入该股历史报告骨架作对比材料（E1，失败跳过不阻塞）
+      1. analyze() 生成初始报告
+      2. validate_report() 硬规则校验（见 stock_agent/validator.py）
+      3. 有违规 → 违规清单回传 LLM 定点修正（最多 1 轮）
+      4. 修正后仍有违规 → 报告附 _validation_issues 字段并打日志，不阻塞主流程
+    usage 累积修正调用的 token，保证成本可观测。
+    """
+    # Step 0: 历史对比上下文（E1）——DB 不可用时优雅降级为无历史
+    history_context = ""
+    if stock_code:
+        try:
+            from database import get_recent_reports
+            from stock_agent.history import build_history_context
+            history_context = build_history_context(get_recent_reports(stock_code))
+            if history_context:
+                print(f"[analyze] 已注入 {stock_code} 历史对比上下文（{len(history_context)} 字符）", file=sys.stderr)
+        except Exception as e:
+            print(f"[analyze] ⚠️ 历史报告加载失败，按无历史继续: {e}", file=sys.stderr)
+
+    report, usage = analyze(markdown_report, history_context)
+    issues = validate_report(report)
+    if not issues:
+        return report, usage
+
+    print(f"[analyze] ⚠️ 校验发现 {len(issues)} 处违规，尝试定点修正: {issues[:3]}", file=sys.stderr)
+    try:
+        repaired, repair_usage = _repair_report(report, issues)
+        # 累积修正调用成本
+        usage = {k: usage.get(k, 0) + repair_usage.get(k, 0) for k in ("prompt", "completion", "total")}
+        issues_after = validate_report(repaired)
+        before = len(issues)
+        if len(issues_after) < before:
+            report, issues = repaired, issues_after
+            print(f"[analyze] → 修正后违规数 {before} → {len(issues)}", file=sys.stderr)
+    except Exception as e:
+        print(f"[analyze] ⚠️ 修正调用失败，保留原报告: {e}", file=sys.stderr)
+
+    if issues:
+        print(f"[analyze] ⚠️ 修正后仍剩 {len(issues)} 处违规（不阻塞）: {issues}", file=sys.stderr)
+        report["_validation_issues"] = issues
+    return report, usage
+
+
+# ═══════════════════════════════════════════
 # 4. 报告渲染（从 render 模块导入）
 # ═══════════════════════════════════════════
 
@@ -308,7 +414,7 @@ async def main():
         # 分析
         print("🤖 LLM 分析...")
         try:
-            report, usage = analyze(data_md["markdown"])
+            report, usage = analyze_with_validation(data_md["markdown"], code)
         except DataIncompleteError as e:
             print(f"  ❌ 数据不完整，拒绝调用LLM: {e}")
             continue

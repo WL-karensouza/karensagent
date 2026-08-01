@@ -1,0 +1,7 @@
+stock,version,blind_name,user_prompt_len,total_token
+600519,A-无历史,report-01.md,26463,29284
+000858,B-有历史,report-02.md,31831,29099
+688221,A-无历史,report-03.md,26597,24597
+688221,B-有历史,report-04.md,27438,33371
+000858,A-无历史,report-05.md,31544,27199
+600519,B-有历史,report-06.md,26750,33422

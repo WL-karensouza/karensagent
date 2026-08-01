@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 BACKEND_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
+sys.path.insert(0, str(Path(__file__).parent))  # tests 目录自身：供 test_validator 等同级测试模块导入
 
 
 # ═══════════════════════════════════════════

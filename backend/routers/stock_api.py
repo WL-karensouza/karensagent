@@ -85,7 +85,7 @@ def _run_analysis(task_id: str, stock_code: str):
     """后台执行个股分析：SKILL 取数 → LLM 分析 → 渲染 → 存库"""
     try:
         from stock_agent.skill.report import generate_report_sync
-        from stock_agent.analyze import analyze
+        from stock_agent.analyze import analyze_with_validation
         from stock_agent.render import render_markdown
         from database import save_stock_report
 
@@ -101,7 +101,7 @@ def _run_analysis(task_id: str, stock_code: str):
         stock_name = data_result.get("stock_name", stock_code)
 
         # Step 2: DeepSeek 分析
-        report, usage = analyze(data_md)
+        report, usage = analyze_with_validation(data_md, stock_code)
 
         # Step 3: 渲染
         md = render_markdown(stock_code, report, usage, stock_name)
@@ -137,7 +137,7 @@ def _run_watchlist_analyze(task_id: str):
     """后台执行自选股分析：从数据库读取启用状态的自选股，逐只分析（不推送飞书）"""
     try:
         from stock_agent.skill.report import generate_report_sync
-        from stock_agent.analyze import analyze
+        from stock_agent.analyze import analyze_with_validation
         from stock_agent.render import render_markdown
         from database import save_stock_report, get_watchlist
 
@@ -162,7 +162,7 @@ def _run_watchlist_analyze(task_id: str):
                     raise RuntimeError(_CRITICAL_FAIL_MSG)
                 data_md = data_result["markdown"]
                 stock_name = data_result.get("stock_name", code)
-                report, usage = analyze(data_md)
+                report, usage = analyze_with_validation(data_md, code)
                 md = render_markdown(code, report, usage, stock_name)
                 save_stock_report(
                     stock_code=code, stock_name=stock_name,
@@ -434,11 +434,11 @@ async def skill_report_invest(req: AnalyzeRequest):
         })
 
         try:
-            from stock_agent.analyze import analyze, render_markdown
+            from stock_agent.analyze import analyze_with_validation, render_markdown
 
             loop = asyncio.get_running_loop()
             report_json, usage = await loop.run_in_executor(
-                None, analyze, report_md,
+                None, analyze_with_validation, report_md, req.stock_code,
             )
             invest_md = render_markdown(req.stock_code, report_json, usage, stock_name)
 

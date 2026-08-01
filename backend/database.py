@@ -117,6 +117,28 @@ def get_latest_report(stock_code: str) -> dict | None:
         db.close()
 
 
+def get_recent_reports(stock_code: str, limit: int = 9) -> list[dict]:
+    """获取某只股票最近 limit 份报告（按 id 倒序，最新在前）
+
+    供 stock_agent/history.py 历史对比采样用；limit 默认 9 恰好覆盖
+    奇数位采样最远位置（N≥6 时取 [1,3,5,7,9]）。
+    """
+    from models import StockReport
+
+    db = SessionLocal()
+    try:
+        rows = (
+            db.query(StockReport)
+            .filter(StockReport.stock_code == stock_code)
+            .order_by(StockReport.id.desc())
+            .limit(limit)
+            .all()
+        )
+        return [_model_to_dict(r) for r in rows]
+    finally:
+        db.close()
+
+
 def get_stock_reports(
     page: int = 1,
     page_size: int = 10,

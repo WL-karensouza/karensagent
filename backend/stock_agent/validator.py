@@ -1,0 +1,189 @@
+"""投研报告语义校验器 — E0 质量层基建
+
+将 tests/e1_field_completeness.py 的字段完整度检查下沉为生产级硬规则校验。
+validate_report() 返回违规清单（空列表 = 通过），每条违规是可读中文句子，
+可直接回传给 LLM 做定点修正（见 analyze.analyze_with_validation）。
+
+规则来源：prompts/output_schema.py 的 8 条注意 + 9 模块 Schema 硬性要求。
+"""
+
+# ═══════════════════════════════════════════
+# 规则常量
+# ═══════════════════════════════════════════
+
+# 顶层必需字段 → 期望类型（迁移自 e1_field_completeness.FIELDS）
+REQUIRED_FIELDS: dict[str, type | tuple] = {
+    "score": (int, float),
+    "decision": str,
+    "module_1_核心结论": dict,
+    "module_2_公司画像": dict,
+    "module_3_财务健康": dict,
+    "module_4_股价走势": dict,
+    "module_5_北向资金": dict,
+    "module_6_股东筹码": dict,
+    "module_7_催化舆情": dict,
+    "module_8_风险ESG": dict,
+    "module_9_操作指南": dict,
+    "signal_attribution": list,
+}
+
+# 各模块关键子字段（缺失 / null / 空字符串 均计违规；迁移自 e1_field_completeness.MODULE_CHECKS）
+MODULE_SUB_FIELDS: dict[str, list[str]] = {
+    "module_1_核心结论": ["rating_sentence", "core_logic", "reference_prices"],
+    "module_2_公司画像": ["business", "valuation"],
+    "module_3_财务健康": ["profitability", "key_indicators", "risk_alerts"],
+    "module_4_股价走势": ["trend", "capital_flow"],
+    "module_5_北向资金": ["available", "trend", "interpretation"],
+    "module_6_股东筹码": ["major_moves", "chip_analysis"],
+    "module_7_催化舆情": ["positive", "negative", "sentiment"],
+    "module_8_风险ESG": ["risk_level", "risks", "esg"],
+    "module_9_操作指南": ["buy_strategy", "stop_loss", "take_profit", "holding_period"],
+}
+
+VALID_DECISIONS = ("看多", "震荡", "看空")
+WEIGHT_SUM_TOLERANCE = 0.05      # signal_attribution 权重和容差（浮点误差）
+MIN_KEY_INDICATORS = 4           # module_3 核心财务指标最少 4 项（schema 注意 7）
+MIN_POSITIVE_NEGATIVE = 1        # module_7 利好/利空各至少 1 条（schema 注意 8）
+MIN_RISKS = 2                    # module_8 风险点至少 2 个（core_rules 第 6 条）
+BULLISH_SCORE_FLOOR = 60         # score ≥ 60 应偏乐观（schema 注意 4）
+BEARISH_SCORE_CEIL = 40          # score ≤ 40 应偏悲观
+
+
+# ═══════════════════════════════════════════
+# 校验主入口
+# ═══════════════════════════════════════════
+
+def validate_report(report: dict) -> list[str]:
+    """语义校验报告 JSON，返回违规清单（空列表 = 全部通过）
+
+    校验维度：
+      1. 顶层必需字段齐全且类型正确
+      2. score 范围 [0, 100]
+      3. decision ∈ {看多, 震荡, 看空}
+      4. 9 模块关键子字段非缺失 / 非空
+      5. module_3 核心指标 ≥ 4 项
+      6. module_7 利好/利空各 ≥ 1 条
+      7. module_8 风险点 ≥ 2 个
+      8. signal_attribution 权重非负且总和 = 1.0 ± 容差
+      9. score 与 decision 方向一致性
+    """
+    if not isinstance(report, dict):
+        return ["报告不是 JSON 对象，无法校验"]
+
+    issues: list[str] = []
+    _check_required_fields(report, issues)
+    _check_score_and_decision(report, issues)
+    _check_module_sub_fields(report, issues)
+    _check_module_counts(report, issues)
+    _check_signal_attribution(report, issues)
+    _check_consistency(report, issues)
+    return issues
+
+
+# ═══════════════════════════════════════════
+# 分项校验（内部函数）
+# ═══════════════════════════════════════════
+
+def _check_required_fields(report: dict, issues: list[str]) -> None:
+    """顶层必需字段：缺失 / null / 类型错误 / 空值"""
+    for field, expected in REQUIRED_FIELDS.items():
+        if field not in report:
+            issues.append(f"缺少顶层必需字段 {field}")
+            continue
+        val = report[field]
+        if val is None:
+            issues.append(f"顶层字段 {field} 为 null")
+            continue
+        if not isinstance(val, expected):
+            issues.append(f"顶层字段 {field} 类型错误（应为 {expected}，实际 {type(val).__name__}）")
+            continue
+        # 空字符串 / 空集合视为违规（score 是数值不在此列）
+        if isinstance(val, str) and not val.strip():
+            issues.append(f"顶层字段 {field} 为空字符串")
+        elif isinstance(val, (list, dict)) and len(val) == 0:
+            issues.append(f"顶层字段 {field} 为空集合")
+
+
+def _check_score_and_decision(report: dict, issues: list[str]) -> None:
+    """score 范围与 decision 枚举"""
+    score = report.get("score")
+    if isinstance(score, (int, float)) and not isinstance(score, bool):
+        if not 0 <= score <= 100:
+            issues.append(f"score={score} 超出 [0, 100] 范围")
+
+    decision = report.get("decision")
+    if isinstance(decision, str) and decision.strip() and decision not in VALID_DECISIONS:
+        issues.append(f"decision='{decision}' 不在枚举 {VALID_DECISIONS} 内")
+
+
+def _check_module_sub_fields(report: dict, issues: list[str]) -> None:
+    """9 模块关键子字段：缺失 / null / 空字符串计违规（空集合不在此列，由计数规则专管）"""
+    for module_key, sub_fields in MODULE_SUB_FIELDS.items():
+        module = report.get(module_key)
+        if not isinstance(module, dict):
+            continue  # 顶层字段检查已报过缺失/类型问题，此处不重复
+        for sf in sub_fields:
+            if sf not in module or module[sf] is None:
+                issues.append(f"{module_key} 缺少子字段 {sf}")
+            elif isinstance(module[sf], str) and not module[sf].strip():
+                issues.append(f"{module_key}.{sf} 为空字符串")
+
+
+def _check_module_counts(report: dict, issues: list[str]) -> None:
+    """模块内集合型字段的数量下限"""
+    m3 = report.get("module_3_财务健康")
+    if isinstance(m3, dict):
+        indicators = m3.get("key_indicators")
+        if isinstance(indicators, list) and len(indicators) < MIN_KEY_INDICATORS:
+            issues.append(f"module_3 核心财务指标仅 {len(indicators)} 项，少于 {MIN_KEY_INDICATORS} 项（毛利率/ROE/资产负债率/现金流）")
+
+    m7 = report.get("module_7_催化舆情")
+    if isinstance(m7, dict):
+        for side, label in (("positive", "利好"), ("negative", "利空")):
+            val = m7.get(side)
+            if isinstance(val, list) and len(val) < MIN_POSITIVE_NEGATIVE:
+                issues.append(f"module_7 {label}事件为空，至少需 {MIN_POSITIVE_NEGATIVE} 条（数据不足也应写明'暂无明显{label}事件'）")
+
+    m8 = report.get("module_8_风险ESG")
+    if isinstance(m8, dict):
+        risks = m8.get("risks")
+        if isinstance(risks, list) and len(risks) < MIN_RISKS:
+            issues.append(f"module_8 风险点仅 {len(risks)} 个，少于 {MIN_RISKS} 个（core_rules 第 6 条硬性要求）")
+
+
+def _check_signal_attribution(report: dict, issues: list[str]) -> None:
+    """信号归因：权重非负且总和 = 1.0 ± 容差"""
+    sa = report.get("signal_attribution")
+    if not isinstance(sa, list) or len(sa) == 0:
+        return  # 缺失/空集合已在顶层字段检查报过
+
+    total = 0.0
+    for i, item in enumerate(sa):
+        if not isinstance(item, dict):
+            issues.append(f"signal_attribution[{i}] 不是对象")
+            continue
+        weight = item.get("weight")
+        if not isinstance(weight, (int, float)) or isinstance(weight, bool):
+            issues.append(f"signal_attribution[{i}]（{item.get('source', '?')}）weight 缺失或非数值")
+            continue
+        if weight < 0:
+            issues.append(f"signal_attribution[{i}]（{item.get('source', '?')}）weight={weight} 为负数")
+        total += weight
+
+    if abs(total - 1.0) > WEIGHT_SUM_TOLERANCE:
+        issues.append(f"signal_attribution 权重和={total:.2f}，与 1.0 偏差超过容差 {WEIGHT_SUM_TOLERANCE}")
+
+
+def _check_consistency(report: dict, issues: list[str]) -> None:
+    """score 与 decision 方向一致性（schema 注意 4：≥60 偏乐观，≤40 偏悲观）"""
+    score = report.get("score")
+    decision = report.get("decision")
+    if not isinstance(score, (int, float)) or isinstance(score, bool):
+        return
+    if not isinstance(decision, str):
+        return
+
+    if score >= BULLISH_SCORE_FLOOR and decision == "看空":
+        issues.append(f"一致性矛盾：score={score}（≥{BULLISH_SCORE_FLOOR} 偏乐观）但 decision=看空")
+    elif score <= BEARISH_SCORE_CEIL and decision == "看多":
+        issues.append(f"一致性矛盾：score={score}（≤{BEARISH_SCORE_CEIL} 偏悲观）但 decision=看多")

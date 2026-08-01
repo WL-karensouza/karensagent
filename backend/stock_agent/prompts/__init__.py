@@ -31,11 +31,23 @@ def build_system_prompt() -> str:
     return "\n\n".join(layers)
 
 
-def build_user_prompt(markdown_report: str) -> str:
-    """构建 user prompt——直接使用 SKILL 返回的 Markdown 数据报告"""
+def build_user_prompt(markdown_report: str, history_context: str = "") -> str:
+    """构建 user prompt——数据报告 + 可选历史对比上下文
+
+    Args:
+        markdown_report: SKILL 返回的 Markdown 综合数据报告
+        history_context: stock_agent.history 构建的历史报告骨架上下文（空串 = 不注入历史）
+    """
     parts = [
         "以下是同花顺 iFinD SKILL 为该股票采集的综合数据报告，请基于此数据进行分析：",
         "",
         markdown_report,
     ]
+    if history_context:
+        parts += [
+            "",
+            history_context,
+            "",
+            "若本次结论与历史结论存在差异，请在 module_1 核心逻辑中明确指出变化方向及原因。",
+        ]
     return "\n".join(parts)
