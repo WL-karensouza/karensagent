@@ -4,7 +4,7 @@ TDD Step 5: analyze.py 测试（适配 2026-07-16 9 模块 Prompt）
 测试目标:
   1. build_system_prompt — 三层 prompt 组装
   2. build_user_prompt — 包装 Markdown 数据报告
-  3. analyze — 调用 deepseek-reasoner（验证 model 参数）
+  3. analyze — 调用 deepseek-v4-flash（验证 model 参数）
   4. 数据不完整时的拒绝逻辑
 """
 import sys
@@ -112,7 +112,7 @@ def test_build_user_prompt_empty():
 # ═══════════════════════════════════════════
 
 def test_analyze_uses_reasoner_model():
-    """analyze() 应使用 deepseek-reasoner 模型"""
+    """analyze() 应使用 deepseek-v4-flash 模型"""
     from stock_agent.analyze import analyze
 
     markdown_report = "# 测试数据报告\n内容..."
@@ -137,17 +137,23 @@ def test_analyze_uses_reasoner_model():
 
         report, usage = analyze(markdown_report)
 
-        # 验证调用了 deepseek-reasoner
+        # 验证调用了 deepseek-v4-flash 且显式开启思考模式
         call_kwargs = mock_client.chat.completions.create.call_args
-        assert call_kwargs[1]["model"] == "deepseek-reasoner", (
-            f"应使用 deepseek-reasoner，实际: {call_kwargs[1]['model']}"
+        assert call_kwargs[1]["model"] == "deepseek-v4-flash", (
+            f"应使用 deepseek-v4-flash，实际: {call_kwargs[1]['model']}"
+        )
+        assert call_kwargs[1]["extra_body"] == {"thinking": {"type": "enabled"}}, (
+            f"应显式开启思考模式，实际: {call_kwargs[1].get('extra_body')}"
+        )
+        assert call_kwargs[1].get("reasoning_effort") == "high", (
+            f"思考强度应为 high，实际: {call_kwargs[1].get('reasoning_effort')}"
         )
         assert report["score"] == 75
         assert report["decision"] == "看多"
         assert "module_1_核心结论" in report
         assert usage["total"] == 700
 
-        print(f"[OK] analyze 使用 deepseek-reasoner, score={report['score']}")
+        print(f"[OK] analyze 使用 deepseek-v4-flash, score={report['score']}")
 
 
 def test_analyze_validates_data():

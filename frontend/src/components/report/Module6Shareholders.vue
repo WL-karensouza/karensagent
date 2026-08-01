@@ -88,7 +88,7 @@ const signalEmoji = (s) => ({ '偏多': '🟢', '偏空': '🔴', '中性': '⚪
   padding: 16px 20px;
   margin: 0;
   background: var(--bg-subtle, #f8f7f4);
-  border-left: 3px solid var(--accent, #D97706);
+  /* border-left: 3px solid var(--accent, #D97706); */
   border-radius: 0 var(--radius-sm, 8px) var(--radius-sm, 8px) 0;
 }
 .m6-chip p {

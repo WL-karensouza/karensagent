@@ -104,6 +104,6 @@ defineProps({
   margin: 4px 0;
   line-height: 1.6;
 }
-.positive li { color: var(--red); }
-.negative li { color: var(--green); }
+/* .positive li { color: var(--red); }
+.negative li { color: var(--green); } */
 </style>

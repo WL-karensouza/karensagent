@@ -31,8 +31,9 @@ from ifind_call import call
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 STOCK = {"code": "688981.SH", "name": "中芯国际"}
 
-REASONER_MODEL = "deepseek-reasoner"
-CHAT_MODEL = "deepseek-chat"
+# deepseek-reasoner / deepseek-chat 均已下架，统一使用 deepseek-v4-flash
+REASONER_MODEL = "deepseek-v4-flash"
+CHAT_MODEL = "deepseek-v4-flash"
 
 OUTPUT_DIR = Path(__file__).parent / "probe_results"
 OUTPUT_DIR.mkdir(exist_ok=True)

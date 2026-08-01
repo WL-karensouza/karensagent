@@ -37,7 +37,11 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 PUSH_TIME = os.getenv("PUSH_TIME", "09:00")  # 每天推送时间
 
 # ── LLM 配置（AI 新闻摘要） ──
-LLM_MODEL_ID = os.getenv("LLM_MODEL_ID", "deepseek-chat")
+# deepseek-reasoner/deepseek-chat 均已下架，统一使用 deepseek-v4-flash。
+# v4-flash 默认开启思考模式；思考开关由各调用方显式声明：
+#   analyze.py 开思考（extra_body={"thinking":{"type":"enabled"}}）
+#   graph.py 关思考（model_kwargs={"thinking":{"type":"disabled"}}）让 temperature 生效
+LLM_MODEL_ID = os.getenv("LLM_MODEL_ID", "deepseek-v4-flash")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1")
 

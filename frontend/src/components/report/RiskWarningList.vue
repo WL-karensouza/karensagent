@@ -87,9 +87,9 @@ defineProps({
   background: var(--bg-hover, #f9fafb);
 }
 /* 风险条目左侧条中性灰阶（高深/中/低浅），不用彩色 */
-.risk-high { border-left: 3px solid var(--sent-strong); }
+/* .risk-high { border-left: 3px solid var(--sent-strong); }
 .risk-mid { border-left: 3px solid var(--sent-mid); }
-.risk-low { border-left: 3px solid var(--sent-soft); }
+.risk-low { border-left: 3px solid var(--sent-soft); } */
 .m8-risk-badge {
   flex-shrink: 0;
   width: 22px;
@@ -104,9 +104,9 @@ defineProps({
 }
 /* 风险徽章中性底，严重度由文字灰阶区分 */
 .m8-risk-badge { background: var(--sent-bg); }
-.badge-high { color: var(--sent-strong); }
+/* .badge-high { color: var(--sent-strong); }
 .badge-mid { color: var(--sent-mid); }
-.badge-low { color: var(--sent-soft); }
+.badge-low { color: var(--sent-soft); } */
 .m8-risk-body {
   flex: 1;
   min-width: 0;

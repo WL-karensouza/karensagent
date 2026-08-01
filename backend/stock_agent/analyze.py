@@ -254,12 +254,16 @@ def analyze(markdown_report: str) -> tuple[dict, dict]:
     user_prompt = build_user_prompt(markdown_report)
 
     resp = client.chat.completions.create(
-        model="deepseek-reasoner",
+        model="deepseek-v4-flash",
         messages=[
             {"role": "system", "content": build_system_prompt()},
             {"role": "user", "content": user_prompt},
         ],
-        max_tokens=16384,  # 推理模型需足够 token 给 reasoning + content
+        # 显式开启思考模式（官方文档：deepseek-reasoner/deepseek-chat 已下架，
+        # 统一使用 deepseek-v4-flash，默认即开启思考且 effort=high，此处显式声明防回归）
+        extra_body={"thinking": {"type": "enabled"}},
+        reasoning_effort="high",
+        max_tokens=16384,  # 思考模式需足够 token 给 reasoning + content
     )
 
     content = resp.choices[0].message.content

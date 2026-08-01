@@ -51,11 +51,14 @@ def _get_llm() -> ChatOpenAI:
     """获取 LLM 客户端（单例）"""
     global _llm
     if _llm is None:
+        # deepseek-v4-flash 默认开启思考模式，思考模式下 temperature 等采样参数不生效；
+        # 新闻摘要求快速确定性输出，此处显式关闭思考，让 temperature=0.3 生效。
         _llm = ChatOpenAI(
             model=LLM_MODEL_ID,
             api_key=LLM_API_KEY,
             base_url=LLM_BASE_URL,
             temperature=0.3,
+            model_kwargs={"thinking": {"type": "disabled"}},
         )
     return _llm
 
