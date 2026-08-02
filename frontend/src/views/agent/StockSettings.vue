@@ -23,12 +23,13 @@ const editEnabled = ref(true)
  * 系统配置（localStorage 持久化）
  * ═══════════════════════════════════════════ */
 const feishuAutoPush = ref(false)
-/* 10 维度与 report.py DIMENSIONS 严格对齐 */
+/* A 股 10 维对齐 report.py DIMENSIONS；valuation 为港股附加项（HK_DIMENSIONS 独有，A 股分析时被后端自然过滤） */
 const dimensions = ref([
   { key: 'quotes',       label: '实时行情',        checked: true },
   { key: 'summary',      label: '基本信息与估值',   checked: true },
   { key: 'performance',  label: '近期行情走势',     checked: true },
   { key: 'financials',   label: '财务数据',         checked: true },
+  { key: 'valuation',    label: '估值水平（港股）', checked: true },  // HK_DIMENSIONS 独有；A 股无此维度，勾选无害
   { key: 'shareholders', label: '股东结构',         checked: true },
   { key: 'risk',         label: '风险评估',         checked: true },
   { key: 'esg',          label: 'ESG 评级',         checked: true },
