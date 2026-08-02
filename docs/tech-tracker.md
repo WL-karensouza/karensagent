@@ -68,6 +68,7 @@ DeepSeek 输出故障的生产级容错，策略按序：默认宽松模式（st
 | 7 | E3 模块化生成 / E4 多智能体辩论 | 挂起特性 | — | 2026-08-01 | 挂起观察 | E3 可治本解决长输出截断（#1 的根因之一），待容错加固的线上数据再决策；E4 带 kill gate |
 | 8 | git 凭据助手残留警告 `credential-manager-core is not a git command` | 环境噪音 | 🟢 | 2026-07 | 无害 | 更新 git config credential.helper 可消除 |
 | 9 | code-review-graph 钩子报 build_* "Untested" 假阳性（跨模块 re-export 识别不到） | 工具噪音 | 🟢 | 2026-08-01 | 无害 | 忽略，测试实际经 analyze re-export 覆盖 |
+| 10 | **analyze.py 硬编码 OpenAI 端点，未接 .env 的 LLM_BASE_URL（anthropic）**：生产链路 DeepSeek 走 OpenAI 端点，与 .env 配置意图（两模型统一 anthropic）不一致；E4 辩论链顾问A 因复用 analyze 亦走 OpenAI（实验暂不改，用户指示生产环境修改时统一） | 配置一致性 | 🟡 | 2026-08-03 | 待生产改造 | 生产环境改造时全链统一 anthropic 端点：注意 OpenAI↔Anthropic 思考参数协议差异（extra_body thinking vs thinking 参数），改完全链路回归 |
 
 ---
 
