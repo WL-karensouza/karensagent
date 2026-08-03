@@ -1,3 +1,0 @@
-stock,version,score,decision,validator_issues,deepseek_token,qwen_token,total_token,rounds,consensus,elapsed_s
-688825,A-基线,55,震荡,0,35004,,35004,,,119.7
-688825,B-辩论,60,看多,0,76046,35352,111398,0,True,413.8
