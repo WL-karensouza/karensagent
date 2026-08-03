@@ -48,6 +48,37 @@ MIN_RISKS = 2                    # module_8 风险点至少 2 个（core_rules �
 BULLISH_SCORE_FLOOR = 60         # score ≥ 60 应偏乐观（schema 注意 4）
 BEARISH_SCORE_CEIL = 40          # score ≤ 40 应偏悲观
 
+# 9 大模块至少在场数个，低于即判坍塌（截断残片）
+MIN_PRESENT_MODULES = 6
+_MODULE_KEYS = tuple(k for k in REQUIRED_FIELDS if k.startswith("module_"))
+
+
+class StructuralCollapseError(RuntimeError):
+    """LLM 输出结构坍塌（思考吃满输出上限、正文截断成残片）
+
+    与"小违规"区分：坍塌必须抛错触发上游整体重试，
+    不得进入"违规不阻塞"流程被静默存库（2026-08-04 偶发空报告事故根因）。
+    """
+
+    def __init__(self, message: str, usage: dict | None = None):
+        super().__init__(message)
+        self.usage = usage or {}  # 携带当次调用成本，供上游重试累积保持可观测
+
+
+def is_collapsed_report(report) -> bool:
+    """结构坍塌判定：思考过程吃满输出预算、正文被截断时，容错解析可能把
+    思考文字里的草稿残片救成合法 dict（如单个风险点对象），此类残片必须
+    按生成失败处理。
+
+    判定（满足任一）：非 dict / 缺 score / 缺 decision / 9 大模块在场少于 6 个。
+    """
+    if not isinstance(report, dict):
+        return True
+    if "score" not in report or "decision" not in report:
+        return True
+    present = sum(1 for k in _MODULE_KEYS if k in report)
+    return present < MIN_PRESENT_MODULES
+
 
 # ═══════════════════════════════════════════
 # 校验主入口

@@ -1,17 +1,3 @@
-"""
-实验 B：Dogfooding 最小可行分析脚本
-用法：
-    python backend/stock_agent/analyze.py 600398              # 终端查看报告
-    python backend/stock_agent/analyze.py 600398 --push       # 查看 + 推送到飞书
-    python backend/stock_agent/analyze.py 600398 --json       # JSON 格式输出
-    python backend/stock_agent/analyze.py --watchlist         # 分析自选股列表
-    python backend/stock_agent/analyze.py 600398,000858,300750  # 批量分析
-
-连续使用 3 天后评估：
-- 今天（Day 1）：____ 是否看了报告？____ 是否影响了操作决策？____
-- Day 2：____ 是否主动使用？____ 是否影响了操作决策？____
-- Day 3：____ 是否主动使用？____ 是否影响了操作决策？____
-"""
 import asyncio
 import json
 import os
@@ -134,6 +120,16 @@ def analyze(markdown_report: str, history_context: str = "") -> tuple[dict, dict
     except Exception:
         _dump_parse_failure(raw_text)  # 容错耗尽前落语料，供 tests/replay_failures.py 回放
         raise
+
+    # 结构门关：思考吃满输出上限、正文截断时，容错解析可能把思考文字里的
+    # 草稿残片救成合法 dict（2026-08-04 偶发空报告事故形态）。
+    # 坍塌按生成失败处理：上游整体重试，绝不作为合法报告存库。
+    if is_collapsed_report(report):
+        _dump_parse_failure(raw_text)
+        raise StructuralCollapseError(
+            f"LLM 输出结构坍塌（顶层仅字段 {list(report)[:5]}），判为截断残片",
+            usage=usage,  # 带上成本，供上游重试时累积保持可观测
+        )
     return report, usage
 
 
@@ -307,7 +303,16 @@ def _parse_json(raw_text: str, max_retries: int = 3) -> dict:
 # 3.5 语义校验 + 定点修正（E0 质量层）
 # ═══════════════════════════════════════════
 
-from stock_agent.validator import validate_report
+from stock_agent.validator import (
+    validate_report,
+    is_collapsed_report,
+    StructuralCollapseError,
+)
+
+
+def _add_usage(a: dict, b: dict) -> dict:
+    """两份 usage 成本字典逐项累加（保持 prompt/completion/total 可观测）"""
+    return {k: a.get(k, 0) + b.get(k, 0) for k in ("prompt", "completion", "total")}
 
 
 def _repair_report(report: dict, issues: list[str]) -> tuple[dict, dict]:
@@ -384,7 +389,14 @@ def analyze_with_validation(markdown_report: str, stock_code: str = "") -> tuple
         except Exception as e:
             print(f"[analyze] ⚠️ 历史报告加载失败，按无历史继续: {e}", file=sys.stderr)
 
-    report, usage = analyze(markdown_report, history_context)
+    try:
+        report, usage = analyze(markdown_report, history_context)
+    except StructuralCollapseError as e:
+        # 截断坍塌是偶发的（取决于当次思考写多长）：整体重试生成一次，
+        # 成本累积保持可观测；仍坍塌则抛错 → 前端明确提示失败，不存垃圾报告
+        print(f"[analyze] ⚠️ {e}，自动整体重试生成一次", file=sys.stderr)
+        report, usage2 = analyze(markdown_report, history_context)
+        usage = _add_usage(e.usage, usage2)
     issues = validate_report(report)
     if not issues:
         return report, usage
@@ -393,12 +405,14 @@ def analyze_with_validation(markdown_report: str, stock_code: str = "") -> tuple
     try:
         repaired, repair_usage = _repair_report(report, issues)
         # 累积修正调用成本
-        usage = {k: usage.get(k, 0) + repair_usage.get(k, 0) for k in ("prompt", "completion", "total")}
-        issues_after = validate_report(repaired)
+        usage = _add_usage(usage, repair_usage)
         before = len(issues)
-        if len(issues_after) < before:
-            report, issues = repaired, issues_after
-            print(f"[analyze] → 修正后违规数 {before} → {len(issues)}", file=sys.stderr)
+        # 结构门关先于完整校验：坍塌残片违规数反而少，防"谁少采纳谁"误纳，也省白校验
+        if not is_collapsed_report(repaired):
+            issues_after = validate_report(repaired)
+            if len(issues_after) < before:
+                report, issues = repaired, issues_after
+                print(f"[analyze] → 修正后违规数 {before} → {len(issues)}", file=sys.stderr)
     except Exception as e:
         print(f"[analyze] ⚠️ 修正调用失败，保留原报告: {e}", file=sys.stderr)
 

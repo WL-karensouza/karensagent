@@ -10,7 +10,7 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
-from stock_agent.validator import validate_report
+from stock_agent.validator import validate_report, is_collapsed_report
 
 
 def make_valid_report() -> dict:
@@ -291,6 +291,48 @@ def test_multiple_issues_accumulate():
     print(f"[OK] 多违规累积：{len(issues)} 条")
 
 
+# ═══════════════════════════════
+# 结构坍塌判定（偶发空报告门关）
+# ═══════════════════════════════
+
+def test_collapsed_fragment_detected():
+    """思考文字里救出的草稿残片（单个风险点对象）应判坍塌"""
+    fragment = {"type": "估值陷阱", "level": "高", "desc": "PE 1852倍..."}
+    assert is_collapsed_report(fragment) is True
+    print("[OK] 坍塌判定：草稿残片")
+
+
+def test_collapsed_missing_score_or_decision():
+    """缺 score 或 decision → 坍塌"""
+    r1 = make_valid_report()
+    del r1["score"]
+    r2 = make_valid_report()
+    del r2["decision"]
+    assert is_collapsed_report(r1) is True
+    assert is_collapsed_report(r2) is True
+    print("[OK] 坍塌判定：缺 score/decision")
+
+
+def test_collapsed_modules_threshold():
+    """9 大模块在场少于 6 个 → 坍塌；6 个及以上 → 不坍塌（小违规走校验流程）"""
+    r = make_valid_report()
+    for key in ("module_5_北向资金", "module_6_股东筹码", "module_7_催化舆情", "module_8_风险ESG"):
+        del r[key]  # 剩 5 个模块 → 坍塌
+    assert is_collapsed_report(r) is True
+
+    r2 = make_valid_report()
+    del r2["module_9_操作指南"]  # 剩 8 个 → 不坍塌
+    assert is_collapsed_report(r2) is False
+    print("[OK] 坍塌判定：模块数量阈值")
+
+
+def test_collapsed_non_dict():
+    """非 dict 输入应判坍塌（不崩溃）"""
+    assert is_collapsed_report("不是 dict") is True
+    assert is_collapsed_report(None) is True
+    print("[OK] 坍塌判定：非 dict 兜底")
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("E0: validator.py 语义校验测试")
@@ -315,5 +357,9 @@ if __name__ == "__main__":
     test_consistency_conflict()
     test_consistency_ok()
     test_multiple_issues_accumulate()
+    test_collapsed_fragment_detected()
+    test_collapsed_missing_score_or_decision()
+    test_collapsed_modules_threshold()
+    test_collapsed_non_dict()
     print("\n" + "=" * 50)
     print("[OK] All validator tests passed")

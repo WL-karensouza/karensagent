@@ -15,6 +15,7 @@
 """
 
 import asyncio
+import sys
 import uuid
 import time
 import threading
@@ -456,8 +457,9 @@ async def skill_report_invest(req: AnalyzeRequest):
                         token_used=usage.get("total", 0),
                     ),
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                # 存库失败曾被静默吞掉：历史列表有记录、详情页却空且日志无痕（2026-08-04 事故）
+                print(f"[stock_api] ⚠️ 投研报告存库失败，前端详情页将为空: {e}", file=sys.stderr)
 
             yield _format_sse_invest("complete", {
                 "report": invest_md,

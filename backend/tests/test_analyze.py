@@ -15,6 +15,10 @@ BACKEND_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 sys.path.insert(0, str(Path(__file__).parent))  # tests 目录自身：供 test_validator 等同级测试模块导入
 
+import json as _json
+
+from test_validator import make_valid_report
+
 
 # ═══════════════════════════════════════════
 # System Prompt 构建
@@ -122,19 +126,10 @@ def test_analyze_uses_reasoner_model():
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
 
-        mock_completion = MagicMock()
-        mock_choice = MagicMock()
-        # 新 9 模块 JSON 格式
-        mock_choice.message.content = (
-            '{"score":75,"decision":"看多",'
-            '"module_1_核心结论":{"rating_sentence":"测试结论","core_logic":[],"reference_prices":{}}'
-            '}'
+        # 坍塌门关后契约：mock 响应必须结构完整（9 模块齐全），否则被门关拦截
+        mock_client.chat.completions.create.return_value = _mock_completion(
+            _json.dumps(make_valid_report(), ensure_ascii=False)
         )
-        mock_completion.choices = [mock_choice]
-        mock_completion.usage.prompt_tokens = 500
-        mock_completion.usage.completion_tokens = 200
-        mock_completion.usage.total_tokens = 700
-        mock_client.chat.completions.create.return_value = mock_completion
 
         report, usage = analyze(markdown_report)
 
@@ -149,7 +144,7 @@ def test_analyze_uses_reasoner_model():
         assert call_kwargs[1].get("reasoning_effort") == "high", (
             f"思考强度应为 high，实际: {call_kwargs[1].get('reasoning_effort')}"
         )
-        assert report["score"] == 75
+        assert report["score"] == 72
         assert report["decision"] == "看多"
         assert "module_1_核心结论" in report
         assert usage["total"] == 700
@@ -195,7 +190,7 @@ def test_analyze_stderr_does_not_leak_api_key(monkeypatch, capsys):
         mock_openai.return_value = mock_client
         mock_completion = MagicMock()
         mock_choice = MagicMock()
-        mock_choice.message.content = '{"score":75,"decision":"看多"}'
+        mock_choice.message.content = _json.dumps(make_valid_report(), ensure_ascii=False)
         mock_choice.finish_reason = "stop"
         mock_completion.choices = [mock_choice]
         mock_completion.usage.prompt_tokens = 10
@@ -359,7 +354,7 @@ def test_analyze_passes_history_context_to_prompt():
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
         mock_client.chat.completions.create.return_value = _mock_completion(
-            '{"score":75,"decision":"看多"}'
+            _json.dumps(make_valid_report(), ensure_ascii=False)
         )
 
         analyze("# 测试报告\n有内容", history_context="HISTORY_MARKER_XYZ")
@@ -373,9 +368,7 @@ def test_analyze_passes_history_context_to_prompt():
 
 def test_analyze_with_validation_no_repair_when_valid():
     """报告一次合规 → 不触发修正调用"""
-    import json as _json
     from stock_agent.analyze import analyze_with_validation
-    from test_validator import make_valid_report
 
     with patch('stock_agent.analyze.OpenAI') as mock_openai:
         mock_client = MagicMock()
@@ -394,11 +387,11 @@ def test_analyze_with_validation_no_repair_when_valid():
 
 def test_analyze_with_validation_repair_succeeds():
     """首次违规 + 修正后合规 → 采纳修正版，usage 累积"""
-    import json as _json
     from stock_agent.analyze import analyze_with_validation
-    from test_validator import make_valid_report
 
-    bad = '{"score":75,"decision":"买入"}'  # 多违规：枚举错 + 缺 9 模块
+    bad_report = make_valid_report()
+    bad_report["decision"] = "买入"  # 结构完整但枚举违规（小违规，走修正流程）
+    bad = _json.dumps(bad_report, ensure_ascii=False)
     good = _json.dumps(make_valid_report(), ensure_ascii=False)
 
     with patch('stock_agent.analyze.OpenAI') as mock_openai:
@@ -422,7 +415,9 @@ def test_analyze_with_validation_repair_fails_keeps_original():
     """修正后仍违规 → 兜底保留原报告，附 _validation_issues，不阻塞"""
     from stock_agent.analyze import analyze_with_validation
 
-    bad = '{"score":75,"decision":"买入"}'
+    bad_report = make_valid_report()
+    bad_report["decision"] = "买入"  # 结构完整的小违规（坍塌门关后契约）
+    bad = _json.dumps(bad_report, ensure_ascii=False)
     with patch('stock_agent.analyze.OpenAI') as mock_openai:
         mock_client = MagicMock()
         mock_openai.return_value = mock_client
@@ -438,6 +433,106 @@ def test_analyze_with_validation_repair_fails_keeps_original():
         assert len(report["_validation_issues"]) > 0
         assert usage["total"] == 1400
     print("[OK] analyze_with_validation: 修正失败兜底")
+
+
+# ═══════════════════════════════
+# 结构门关：截断坍塌不得存库（偶发空报告根因修复）
+#
+# 背景：思考模式偶尔吃满输出上限、正文被截断，容错解析把思考文字里的
+# 草稿残片救成"合法" dict，旧代码走非阻塞违规流程静默存库 → 前端空报告。
+# ═══════════════════════════════
+
+_COLLAPSED_FRAGMENT = '{"type": "估值陷阱", "level": "高", "desc": "PE 1852倍、PS 16倍、市值64亿..."}'
+
+
+def test_analyze_collapsed_fragment_raises():
+    """容错解析把思考草稿残片救成合法 dict 时，analyze 应判坍塌抛错，不得返回半成品"""
+    from stock_agent.analyze import analyze
+    from stock_agent.validator import StructuralCollapseError
+
+    with patch('stock_agent.analyze.OpenAI') as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.return_value = _mock_completion(_COLLAPSED_FRAGMENT)
+        try:
+            analyze("# 测试报告\n有内容")
+            assert False, "坍塌残片应抛 StructuralCollapseError"
+        except StructuralCollapseError:
+            pass
+    print("[OK] analyze 结构门关：坍塌残片抛错")
+
+
+def test_analyze_with_validation_retries_on_collapse():
+    """首遍坍塌（偶发截断）+ 二遍正常 → 自动重试整体生成拿到正常报告，成本累积"""
+    from stock_agent.analyze import analyze_with_validation
+
+    good = _json.dumps(make_valid_report(), ensure_ascii=False)
+    with patch('stock_agent.analyze.OpenAI') as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = [
+            _mock_completion(_COLLAPSED_FRAGMENT, total=700),
+            _mock_completion(good, total=900),
+        ]
+        report, usage = analyze_with_validation("# 测试报告\n有内容")
+
+        assert mock_client.chat.completions.create.call_count == 2, "应首遍坍塌 + 重试二遍"
+        # 重试必须是"整体重新生成"而非"定点修正"（修正救不回截断型坍塌）
+        second_system = mock_client.chat.completions.create.call_args_list[1][1]["messages"][0]["content"]
+        assert "修正助手" not in second_system, "第二遍应是完整生成调用，不是修正调用"
+        assert report["score"] == 72
+        assert usage["total"] == 1600, "坍塌重试成本应累积保持可观测"
+    print("[OK] analyze_with_validation: 坍塌自动重试")
+
+
+def test_analyze_with_validation_retry_still_collapsed_raises():
+    """连续两遍坍塌 → 抛错（前端明确提示失败），不得静默放行存库"""
+    from stock_agent.analyze import analyze_with_validation
+    from stock_agent.validator import StructuralCollapseError
+
+    with patch('stock_agent.analyze.OpenAI') as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.return_value = _mock_completion(_COLLAPSED_FRAGMENT)
+        try:
+            analyze_with_validation("# 测试报告\n有内容")
+            assert False, "连续两遍坍塌应抛错"
+        except StructuralCollapseError:
+            pass
+        assert mock_client.chat.completions.create.call_count == 2, "应重试一次后才抛错"
+    print("[OK] analyze_with_validation: 重试仍坍塌抛错")
+
+
+def test_analyze_with_validation_repair_collapsed_not_adopted():
+    """修正调用返回坍塌残片（违规数恰比原文少）→ 不得采纳，兜底保留原报告"""
+    from stock_agent.analyze import analyze_with_validation
+
+    # 原报告结构完整但塞 13 处空字符串违规（比残片的 12 条缺字段违规多，
+    # 专测"违规数更少就采纳"的旧逻辑不会误纳残片）
+    original = make_valid_report()
+    for module_key, sub_field in (
+        ("module_1_核心结论", "rating_sentence"), ("module_1_核心结论", "core_logic"),
+        ("module_2_公司画像", "business"), ("module_3_财务健康", "profitability"),
+        ("module_4_股价走势", "trend"), ("module_4_股价走势", "capital_flow"),
+        ("module_5_北向资金", "trend"), ("module_5_北向资金", "interpretation"),
+        ("module_6_股东筹码", "chip_analysis"), ("module_7_催化舆情", "sentiment"),
+        ("module_8_风险ESG", "risk_level"), ("module_8_风险ESG", "esg"),
+        ("module_9_操作指南", "buy_strategy"),
+    ):
+        original[module_key][sub_field] = "  "
+
+    with patch('stock_agent.analyze.OpenAI') as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.side_effect = [
+            _mock_completion(_json.dumps(original, ensure_ascii=False)),
+            _mock_completion(_COLLAPSED_FRAGMENT),  # 修正调用返回坍塌残片
+        ]
+        report, _ = analyze_with_validation("# 测试报告\n有内容")
+
+        assert "module_1_核心结论" in report, "应保留原报告结构，残片不得采纳"
+        assert "_validation_issues" in report, "原报告违规标记应保留"
+    print("[OK] analyze_with_validation: 坍塌修正结果不采纳")
 
 
 if __name__ == "__main__":
