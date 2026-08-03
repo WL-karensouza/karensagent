@@ -41,7 +41,8 @@ def test_hk_code_zfill(monkeypatch):
         captured["params"] = params
         return FakeResp()
 
-    monkeypatch.setattr(em.requests, "get", fake_get)
+    # 东财已改专用 session（trust_env=False 绕代理），patch 目标随之更新
+    monkeypatch.setattr(em._session, "get", fake_get)
     name = em._get_name_eastmoney("2513.HK")
     assert name == "美图公司"
     assert captured["params"]["secid"] == "116.02513"

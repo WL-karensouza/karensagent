@@ -6,7 +6,9 @@ import asyncio
 import json
 import re
 
-from ..datasources.eastmoney import _get_name_eastmoney, _fetch_ohlcv_eastmoney
+from ..datasources.eastmoney import (
+    _get_name_eastmoney, _get_name_tencent, _fetch_ohlcv_eastmoney,
+)
 from .indicators import (
     _calc_ema, _calc_ma, _calc_macd, _calc_boll, _calc_rsi, _calc_kdj,
     _last_valid,
@@ -82,18 +84,34 @@ def _resolve_summary_query(stock_code: str) -> str:
     """构建 summary 维度查询：iFinD 的 get_stock_summary 只认股票简称
 
     「股票代码XXXXXX」格式会被服务端拒绝（"未识别到有效的A股股票代码"），
-    故先经东财查简称；查不到则降级回代码格式（等同旧行为，不崩溃）。
+    故先查简称：东财 → 腾讯（备份，东财对本机 IP 间歇性限速）→ 都失败
+    则降级回代码格式（等同旧行为，不崩溃）。
     """
-    shortname = _get_name_eastmoney(stock_code)
+    shortname = _get_name_eastmoney(stock_code) or _get_name_tencent(stock_code)
     subject = shortname if shortname else f"股票代码{stock_code}"
+    # 只写 iFinD 认识的具体指标（"估值水平"等模糊措辞会触发其"部分不识别→整体标错误"）
     return (
         f"{subject}的基本信息，包括公司全称、所属行业、上市日期、"
-        f"总市值、流通市值、市盈率PE、市净率PB、估值水平"
+        f"总市值、流通市值、市盈率PE、市净率PB、市销率PS"
     )
+
+
+def _strip_error_prefix(text: str) -> str:
+    """剥离 SKILL 响应的错误前缀，返回正文"""
+    if text.startswith("[错误]"):
+        return text[4:].strip()
+    if text.startswith("[无数据]"):
+        return text[4:].strip()
+    if text.startswith("[权限不足"):
+        return text.split("]", 1)[-1].strip() if "]" in text else text[5:].strip()
+    return text
 
 
 def _call_dim_with_retry(dim: dict, stock_code: str, max_attempts: int = 2):
     """单维度采集（含重试）：iFinD 会间歇性拒绝/限速，失败等 1 秒重试
+
+    假错误容错：iFinD 偶发"标错误但返回数据"（query 含其不认识的指标时，
+    已认识的部分照常返回、整体标 [错误]）——前缀带数据表格时剥离前缀按成功处理。
 
     Returns (text, raw)；最终失败抛 RuntimeError（携带最后一次错误信息）。
     """
@@ -104,6 +122,10 @@ def _call_dim_with_retry(dim: dict, stock_code: str, max_attempts: int = 2):
         text = extract_text(result)
         if not (text.startswith("[错误]") or text.startswith("[无数据]") or text.startswith("[权限不足")):
             return text, extract_raw(result)
+        # 假错误判定：剥前缀后有实质内容（含表格且够长）→ 视为数据送达
+        body = _strip_error_prefix(text)
+        if "|" in body and len(body) > 100:
+            return body, extract_raw(result)
         last_err = text
         if attempt < max_attempts - 1:
             time.sleep(1.0)

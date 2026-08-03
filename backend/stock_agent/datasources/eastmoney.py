@@ -68,6 +68,44 @@ def _get_name_eastmoney(stock_code: str) -> str | None:
     return None
 
 
+def _get_name_tencent(stock_code: str) -> str | None:
+    """腾讯行情接口查股票简称——东财被限速/掐断时的备份通道
+
+    格式：http://qt.gtimg.cn/q=sh600519 → v_sh600519="1~贵州茅台~600519~..."
+    （GBK 编码，~ 分隔，字段[1] = 简称）。前缀：沪市 sh / 深市 sz / 港股 hk+5位。
+    """
+    code = stock_code.strip()
+    if code.endswith(".HK"):
+        pure = code.replace(".HK", "")
+        if not pure:
+            return None
+        symbol = "hk" + pure.zfill(5)
+    elif code.upper().startswith("HK"):
+        # 兼容输入态 HKxxxx（归一化前格式），同样走港股分支
+        pure = code[2:]
+        if not pure:
+            return None
+        symbol = "hk" + pure.zfill(5)
+    else:
+        pure = code.replace(".SH", "").replace(".SZ", "")
+        if not pure:
+            return None
+        symbol = ("sh" if pure[0] in ("6", "5") else "sz") + pure
+
+    try:
+        r = _session.get(f"http://qt.gtimg.cn/q={symbol}", timeout=5)
+        r.encoding = "gbk"
+        # v_sh600519="1~贵州茅台~600519~..."
+        parts = r.text.split("~")
+        if len(parts) >= 2:
+            name = parts[1].strip()
+            if name and len(name) >= 2:
+                return name
+    except (requests.RequestException, ValueError, AttributeError):
+        pass
+    return None
+
+
 def _fetch_ohlcv_eastmoney(stock_code: str) -> dict | None:
     """从东方财富免费 HTTP API 获取日K线 OHLCV 数据（前复权）
 

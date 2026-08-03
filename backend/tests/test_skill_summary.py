@@ -27,9 +27,10 @@ def test_summary_query_uses_shortname():
 
 
 def test_summary_query_fallback_to_code():
-    """简称查不到时降级回代码格式（不崩溃，行为等同旧版）"""
+    """东财+腾讯都查不到简称时，降级回代码格式（不崩溃，行为等同旧版）"""
     from stock_agent.skill.report import _resolve_summary_query
-    with patch("stock_agent.skill.report._get_name_eastmoney", return_value=None):
+    with patch("stock_agent.skill.report._get_name_eastmoney", return_value=None), \
+         patch("stock_agent.skill.report._get_name_tencent", return_value=None):
         query = _resolve_summary_query("600519")
     assert "600519" in query
     print("[OK] 简称失败降级代码格式")
@@ -41,6 +42,40 @@ def test_build_params_summary_uses_resolver():
         params = _build_params(SUMMARY_DIM, "600519")
     assert params["query"].startswith("贵州茅台"), f"实际: {params['query'][:50]}"
     print("[OK] _build_params 接入简称解析")
+
+
+def test_error_prefix_with_data_treated_as_success():
+    """[错误] 前缀但携带实质数据表格 → iFinD 假错误，应按成功采集处理"""
+    from stock_agent.skill import report as rp
+    fake_text = ("[错误] # A股上市公司基本信息\n"
+                 "|证券代码|证券简称|公司证券全称|\n"
+                 "|600519.SH|贵州茅台|贵州茅台酒股份有限公司|" + "数据" * 30)
+
+    with patch.object(rp, "call_skill", return_value={"type": "answer", "text": fake_text, "raw": {}}), \
+         patch.object(rp, "extract_text", side_effect=lambda r: r["text"]), \
+         patch.object(rp, "extract_raw", side_effect=lambda r: r.get("raw")):
+        text, raw = rp._call_dim_with_retry(SUMMARY_DIM, "600519")
+
+    assert "贵州茅台" in text, f"假错误的数据应被保留，实际: {text[:50]}"
+    assert not text.startswith("[错误]"), "错误前缀应被剥离"
+    print("[OK] [错误]+数据 视为成功")
+
+
+def test_real_error_still_fails():
+    """[错误] + 纯错误消息（无数据）→ 仍判失败，不得误容错"""
+    from stock_agent.skill import report as rp
+
+    with patch.object(rp, "call_skill",
+                      return_value={"type": "answer", "text": "[错误] 未识别到有效的A股股票代码", "raw": {}}), \
+         patch.object(rp, "extract_text", side_effect=lambda r: r["text"]), \
+         patch.object(rp, "extract_raw", side_effect=lambda r: r.get("raw")), \
+         patch.object(rp.time, "sleep"):
+        try:
+            rp._call_dim_with_retry(SUMMARY_DIM, "600519")
+            assert False, "真错误应抛 RuntimeError"
+        except RuntimeError as e:
+            assert "未识别" in str(e)
+    print("[OK] 真错误仍判失败")
 
 
 def test_dim_collect_retries_on_transient_error():
