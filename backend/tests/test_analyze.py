@@ -362,7 +362,7 @@ def test_analyze_passes_history_context_to_prompt():
         messages = mock_client.chat.completions.create.call_args[1]["messages"]
         user_msg = messages[1]["content"]
         assert "HISTORY_MARKER_XYZ" in user_msg, "历史上下文应注入 user prompt"
-        assert "module_1" in user_msg, "应附带对比引导语"
+        assert "history_compared" in user_msg, "应附带历史对比指令（module_9 字段）"
     print("[OK] analyze 历史上下文透传")
 
 
