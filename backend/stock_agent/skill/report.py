@@ -78,6 +78,20 @@ def _news_time_params(dim_key: str) -> dict:
     }
 
 
+def _resolve_summary_query(stock_code: str) -> str:
+    """构建 summary 维度查询：iFinD 的 get_stock_summary 只认股票简称
+
+    「股票代码XXXXXX」格式会被服务端拒绝（"未识别到有效的A股股票代码"），
+    故先经东财查简称；查不到则降级回代码格式（等同旧行为，不崩溃）。
+    """
+    shortname = _get_name_eastmoney(stock_code)
+    subject = shortname if shortname else f"股票代码{stock_code}"
+    return (
+        f"{subject}的基本信息，包括公司全称、所属行业、上市日期、"
+        f"总市值、流通市值、市盈率PE、市净率PB、估值水平"
+    )
+
+
 def _build_params(dim: dict, stock_code: str) -> dict:
     """根据维度配置和股票代码构建 SKILL 调用参数"""
     # 带查询模板的维度（港股）直接格式化
@@ -101,10 +115,8 @@ def _build_params(dim: dict, stock_code: str) -> dict:
 
     # 自然语言类工具 — 构造中文 query
     queries = {
-        "summary": (
-            f"股票代码{stock_code}的基本信息，包括公司全称、所属行业、上市日期、"
-            f"总市值、流通市值、市盈率PE、市净率PB、估值水平"
-        ),
+        # summary 走简称解析（iFinD 只认简称，见 _resolve_summary_query）
+        "summary": _resolve_summary_query(stock_code),
         "performance": (
             f"{stock_code}{_market_suffix(stock_code)}近60个交易日的开盘价、收盘价、最高价、最低价、"
             f"涨跌幅、换手率、成交量、成交额"
