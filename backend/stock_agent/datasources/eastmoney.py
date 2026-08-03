@@ -10,12 +10,15 @@
 import requests
 import time
 
-# 东财对 UA 有检测：python-requests 默认 UA 会被服务端直接掐断连接
-# （RemoteDisconnected），必须伪装浏览器；境内 API 同时显式绕过系统代理，
-# 避免用户全局代理（GitHub 加速）宕掉时 ProxyError 拖死东财通道
-_BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-               "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
-_NO_PROXY = {"http": None, "https": None}
+# 东财通道专用 session：
+#   1. trust_env=False —— 完全绕过系统代理（含 Windows 注册表代理）。
+#      proxies={"http": None} 只能盖 http/https，注册表里的 ftp 等条目仍会漏进
+#      requests 的合并逻辑，只有 trust_env=False 是彻底断开；
+#   2. 浏览器 UA —— 东财对 python-requests 默认 UA 直接掐断连接（RemoteDisconnected）。
+_session = requests.Session()
+_session.trust_env = False
+_session.headers["User-Agent"] = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36")
 
 
 def _get_name_eastmoney(stock_code: str) -> str | None:
@@ -43,12 +46,10 @@ def _get_name_eastmoney(stock_code: str) -> str | None:
     r = None
     for attempt in range(3):
         try:
-            r = requests.get(
+            r = _session.get(
                 "https://push2.eastmoney.com/api/qt/stock/get",
                 params={"fltt": "2", "invt": "2", "fields": "f57,f58", "secid": secid},
                 timeout=5,
-                proxies=_NO_PROXY,
-                headers={"User-Agent": _BROWSER_UA},
             )
             break
         except requests.RequestException:
@@ -94,7 +95,7 @@ def _fetch_ohlcv_eastmoney(stock_code: str) -> dict | None:
         secid = f"{market}.{pure}"
 
     try:
-        r = requests.get(
+        r = _session.get(
             "https://push2his.eastmoney.com/api/qt/stock/kline/get",
             params={
                 "secid": secid,
@@ -106,8 +107,6 @@ def _fetch_ohlcv_eastmoney(stock_code: str) -> dict | None:
                 "lmt": "70",        # 取70条保证覆盖60个交易日
             },
             timeout=10,
-            proxies=_NO_PROXY,
-            headers={"User-Agent": _BROWSER_UA},
         )
         data = r.json()
         klines = (data.get("data") or {}).get("klines")  # data 字段可能为 None

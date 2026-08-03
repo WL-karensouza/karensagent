@@ -1,9 +1,11 @@
-"""东财 HTTP 代理绕过 TDD：国内 API 不得走系统代理
+"""东财 HTTP 通道 TDD：专用 session（trust_env=False）+ 浏览器 UA + 重试
 
-根因：用户环境全局代理（127.0.0.1:17891，GitHub 加速用）宕掉时，
-requests 默认信任系统代理 → 东财调用 ProxyError → 简称查询全挂 →
-summary 降级代码格式 → 部分股票被 iFinD 拒 → critical 门硬终止。
-东财是境内服务，必须显式绕过系统代理。
+根因链：
+  1. requests 默认信任系统代理（含 Windows 注册表代理）→ 用户全局代理宕掉时 ProxyError；
+     proxies={"http": None} 只能盖 http/https，注册表里的 ftp 等条目仍会漏进来，不彻底；
+     trust_env=False 才是完全绕过。
+  2. 东财 UA 检测：python-requests 默认 UA 被服务端直接掐断（RemoteDisconnected），必须伪装浏览器。
+  3. 东财对部分 IP 间歇性掐断连接：重试最多 3 次。
 """
 import sys
 from pathlib import Path
@@ -18,8 +20,17 @@ class _FakeResp:
         return {"data": {"f57": "600519", "f58": "贵州茅台"}}
 
 
-def test_get_name_bypasses_system_proxy():
-    """_get_name_eastmoney 必须绕过系统代理（代理宕掉时国内 API 仍可用）"""
+def test_session_trust_env_disabled():
+    """东财专用 session 必须 trust_env=False（完全绕过系统/注册表代理）"""
+    from stock_agent.datasources import eastmoney as em
+    assert em._session.trust_env is False, "东财 session 必须禁用环境代理信任"
+    assert "Mozilla" in em._session.headers.get("User-Agent", ""), \
+        "session 默认 UA 必须是浏览器（东财掐 python-requests 默认 UA）"
+    print("[OK] 专用 session：trust_env=False + 浏览器 UA")
+
+
+def test_get_name_uses_dedicated_session():
+    """查名走专用 session，返回简称"""
     from stock_agent.datasources import eastmoney as em
     captured = {}
 
@@ -27,15 +38,11 @@ def test_get_name_bypasses_system_proxy():
         captured.update(kwargs)
         return _FakeResp()
 
-    with patch("stock_agent.datasources.eastmoney.requests.get", side_effect=fake_get):
+    with patch.object(em._session, "get", side_effect=fake_get):
         name = em._get_name_eastmoney("600519")
 
     assert name == "贵州茅台"
-    assert captured.get("proxies") == {"http": None, "https": None}, \
-        f"应显式绕过系统代理，实际 proxies={captured.get('proxies')}"
-    assert "Mozilla" in str(captured.get("headers", {}).get("User-Agent", "")), \
-        "应伪装浏览器 UA（东财会掐断 python-requests 默认 UA 的连接）"
-    print("[OK] 查名接口绕过系统代理 + 浏览器 UA")
+    print("[OK] 查名走专用 session")
 
 
 def test_get_name_retries_on_connection_error():
@@ -50,7 +57,8 @@ def test_get_name_retries_on_connection_error():
             raise _rq.exceptions.ConnectionError("RemoteDisconnected")
         return _FakeResp()
 
-    with patch("stock_agent.datasources.eastmoney.requests.get", side_effect=flaky_get):
+    with patch.object(em._session, "get", side_effect=flaky_get), \
+         patch.object(em.time, "sleep"):
         name = em._get_name_eastmoney("600519")
 
     assert name == "贵州茅台", f"重试后应返回名称，实际: {name}"
@@ -58,20 +66,18 @@ def test_get_name_retries_on_connection_error():
     print("[OK] 东财掐断连接自动重试")
 
 
-def test_fetch_ohlcv_bypasses_system_proxy():
-    """_fetch_ohlcv_eastmoney 同样必须绕过系统代理"""
+def test_fetch_ohlcv_uses_dedicated_session():
+    """K线同样走专用 session（trust_env=False + 浏览器 UA 由 session 承载）"""
     from stock_agent.datasources import eastmoney as em
+    import requests as _rq
     captured = {}
 
     def fake_get(url, **kwargs):
         captured.update(kwargs)
-        raise __import__("requests").exceptions.RequestException("stop here")
+        raise _rq.exceptions.RequestException("stop here")
 
-    with patch("stock_agent.datasources.eastmoney.requests.get", side_effect=fake_get):
-        em._fetch_ohlcv_eastmoney("600519")  # 抛 RequestException 会被吞掉返回 None，无所谓
+    with patch.object(em._session, "get", side_effect=fake_get):
+        em._fetch_ohlcv_eastmoney("600519")  # 抛 RequestException 被吞掉返回 None
 
-    assert captured.get("proxies") == {"http": None, "https": None}, \
-        f"应显式绕过系统代理，实际 proxies={captured.get('proxies')}"
-    assert "Mozilla" in str(captured.get("headers", {}).get("User-Agent", "")), \
-        "应伪装浏览器 UA（东财会掐断 python-requests 默认 UA 的连接）"
-    print("[OK] K线接口绕过系统代理 + 浏览器 UA")
+    assert "secid" in captured.get("params", {}), "K线请求应正常发出（走专用 session）"
+    print("[OK] K线走专用 session")
