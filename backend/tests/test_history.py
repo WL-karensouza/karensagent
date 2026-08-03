@@ -57,7 +57,8 @@ def test_sample_indices_large_capped():
 # ═══════════════════════════════════════════
 
 def test_extract_skeleton_fields():
-    """骨架只含 5 个字段，不含模块全文（控制 token）"""
+    """骨架含 7 个字段（score/decision/rating_sentence/core_logic/
+    financials/price_trend/advice），不含 signal_attribution"""
     report = {
         "score": 66,
         "decision": "震荡",
@@ -66,15 +67,42 @@ def test_extract_skeleton_fields():
             "core_logic": ["逻辑1", "逻辑2"],
             "reference_prices": {"support": "5.0"},  # 不进骨架
         },
-        "module_3_财务健康": {"profitability": "全文不应进骨架"},
-        "signal_attribution": [{"source": "估值面", "weight": 1.0}],
+        "module_3_财务健康": {
+            "key_indicators": [
+                {"name": "毛利率", "value": "45%", "trend": "稳定", "verdict": "还行"},
+                {"name": "ROE", "value": "12%", "trend": "上升", "verdict": "不错"},
+            ]
+        },
+        "module_4_股价走势": {"trend": "放量上涨"},
+        "module_9_操作指南": {
+            "buy_strategy": "分批建仓",
+            "stop_loss": "跌破5元止损",
+            "take_profit": "6元止盈",
+        },
+        "signal_attribution": [{"source": "估值面", "weight": 1.0}],  # 不再提取
     }
     sk = extract_skeleton(report)
-    assert set(sk.keys()) == {"score", "decision", "rating_sentence", "core_logic", "signal_attribution"}
+    assert set(sk.keys()) == {
+        "score", "decision", "rating_sentence", "core_logic",
+        "financials", "price_trend", "advice",
+    }
     assert sk["score"] == 66 and sk["decision"] == "震荡"
     assert sk["rating_sentence"] == "一句话评级"
     assert sk["core_logic"] == ["逻辑1", "逻辑2"]
-    print("[OK] 骨架字段精确")
+    # 新字段
+    assert sk["financials"] == [
+        {"name": "毛利率", "value": "45%", "trend": "稳定"},
+        {"name": "ROE", "value": "12%", "trend": "上升"},
+    ]
+    assert sk["price_trend"] == "放量上涨"
+    assert sk["advice"] == {
+        "buy_strategy": "分批建仓",
+        "stop_loss": "跌破5元止损",
+        "take_profit": "6元止盈",
+    }
+    # signal_attribution 不再出现
+    assert "signal_attribution" not in sk
+    print("[OK] 骨架字段精确（7 字段，无 signal_attribution）")
 
 
 def test_extract_skeleton_missing_module1():
@@ -86,11 +114,31 @@ def test_extract_skeleton_missing_module1():
     print("[OK] 骨架提取容错")
 
 
+def test_extract_skeleton_missing_new_modules():
+    """module_3/4/9 缺失时新字段返回空值，不崩溃"""
+    sk = extract_skeleton({"score": 50, "module_1_核心结论": {}})
+    assert sk["financials"] == []
+    assert sk["price_trend"] == ""
+    assert sk["advice"] == {}
+    # 坏类型也不崩溃
+    sk2 = extract_skeleton({
+        "score": 50,
+        "module_3_财务健康": "坏数据",
+        "module_4_股价走势": 123,
+        "module_9_操作指南": None,
+    })
+    assert sk2["financials"] == []
+    assert sk2["price_trend"] == ""
+    assert sk2["advice"] == {}
+    print("[OK] 新模块缺失/坏类型容错")
+
+
 # ═══════════════════════════════════════════
 # 历史上下文构建
 # ═══════════════════════════════════════════
 
-def _fake_row(report_id: int, score: int, decision: str, created_at: str) -> dict:
+def _fake_row(report_id: int, score: int, decision: str, created_at: str,
+              with_new_modules: bool = False) -> dict:
     """模拟 database.get_recent_reports 的一行"""
     report = {
         "score": score,
@@ -101,6 +149,18 @@ def _fake_row(report_id: int, score: int, decision: str, created_at: str) -> dic
         },
         "signal_attribution": [],
     }
+    if with_new_modules:
+        report["module_3_财务健康"] = {
+            "key_indicators": [
+                {"name": "毛利率", "value": f"{40+report_id}%", "trend": "稳定", "verdict": "还行"},
+            ]
+        }
+        report["module_4_股价走势"] = {"trend": f"走势{report_id}"}
+        report["module_9_操作指南"] = {
+            "buy_strategy": f"建仓{report_id}",
+            "stop_loss": f"止损{report_id}",
+            "take_profit": f"止盈{report_id}",
+        }
     return {
         "id": report_id,
         "stock_code": "600519",
@@ -136,6 +196,38 @@ def test_build_context_corrupt_rows_skipped():
     print("[OK] 坏行跳过不崩溃")
 
 
+def test_build_context_new_blocks_rendered():
+    """新增三块：财务指标、股价走势、历史操作 均正确渲染"""
+    rows = [
+        _fake_row(1, 70, "看多", "2026-07-20", with_new_modules=True),
+    ]
+    ctx = build_history_context(rows)
+    # 财务指标
+    assert "财务指标：" in ctx
+    assert "- 毛利率：41%（稳定）" in ctx
+    # 股价走势
+    assert "股价走势：走势1" in ctx
+    # 历史操作
+    assert "历史操作：" in ctx
+    assert "- 建仓策略：建仓1" in ctx
+    assert "- 止损参考：止损1" in ctx
+    assert "- 止盈参考：止盈1" in ctx
+    print("[OK] 新三块渲染正确")
+
+
+def test_build_context_missing_modules_no_render():
+    """旧报告缺模块/字段为空时对应块不渲染，不报错"""
+    rows = [
+        _fake_row(1, 70, "看多", "2026-07-20", with_new_modules=False),
+    ]
+    ctx = build_history_context(rows)
+    assert "财务指标：" not in ctx
+    assert "股价走势：" not in ctx
+    assert "历史操作：" not in ctx
+    assert "评级1" in ctx  # 基础块仍存在
+    print("[OK] 缺模块不渲染不报错")
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("E1: history.py 采样与骨架测试")
@@ -146,8 +238,11 @@ if __name__ == "__main__":
     test_sample_indices_large_capped()
     test_extract_skeleton_fields()
     test_extract_skeleton_missing_module1()
+    test_extract_skeleton_missing_new_modules()
     test_build_context_empty()
     test_build_context_sampling_applied()
     test_build_context_corrupt_rows_skipped()
+    test_build_context_new_blocks_rendered()
+    test_build_context_missing_modules_no_render()
     print("\n" + "=" * 50)
     print("[OK] All history tests passed")

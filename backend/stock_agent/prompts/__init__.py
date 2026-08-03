@@ -48,6 +48,10 @@ def build_user_prompt(markdown_report: str, history_context: str = "") -> str:
             "",
             history_context,
             "",
-            "若本次结论与历史结论存在差异，请在 module_1 核心逻辑中明确指出变化方向及原因。",
+            "你必须将该股历史报告与本次数据逐项对比（财务面、股价面、操作建议三块），并遵守：",
+            "1. module_9 中 history_compared 必须为 true，history_anchor 填最近一份历史报告日期；",
+            "2. 有变化 → changed_aspects 列出变化方面，history_changes 条目化描述（每条含对比日期与对建议的影响）；",
+            "3. 无变化 → changed_aspects 与 history_changes 均置空数组；",
+            "4. 建仓策略/止损参考/止盈参考必须基于与历史同三要素的对比分析后给出，若较历史有调整要说明原因。",
         ]
     return "\n".join(parts)

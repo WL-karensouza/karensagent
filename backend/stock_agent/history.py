@@ -7,7 +7,7 @@
   （序号按时间倒序，最新一份 = 1；近期密集、远期稀疏）
 
 注入形态：只提取骨架字段（score/decision/rating_sentence/core_logic/
-signal_attribution），非全文，5 份骨架约 1~2k tokens。
+financials/price_trend/advice），非全文，5 份骨架约 1~2k tokens。
 数据源：DB stock_reports 表 report_json 字段（database.get_recent_reports）。
 """
 import json
@@ -36,16 +36,57 @@ def sample_history_indices(n: int) -> list[int]:
 
 
 def extract_skeleton(report: dict) -> dict:
-    """提取报告骨架（控制注入 token，不注入全文）"""
+    """提取报告骨架（控制注入 token，不注入全文）
+
+    提取字段：
+      score / decision / rating_sentence / core_logic — 沿用旧有
+      financials  — module_3_财务健康.key_indicators 精简为 [{name, value, trend}]
+      price_trend — module_4_股价走势.trend（字符串）
+      advice      — module_9_操作指南 {buy_strategy, stop_loss, take_profit}
+    """
     m1 = report.get("module_1_核心结论") or {}
     if not isinstance(m1, dict):
         m1 = {}
+
+    # 财务指标：精简为 name/value/trend，丢弃 verdict 控 token
+    m3 = report.get("module_3_财务健康") or {}
+    if not isinstance(m3, dict):
+        m3 = {}
+    financials = []
+    for ind in m3.get("key_indicators", []) or []:
+        if isinstance(ind, dict):
+            financials.append({
+                "name": ind.get("name", ""),
+                "value": ind.get("value", ""),
+                "trend": ind.get("trend", ""),
+            })
+
+    # 股价走势
+    m4 = report.get("module_4_股价走势") or {}
+    if not isinstance(m4, dict):
+        m4 = {}
+    price_trend = m4.get("trend", "") or ""
+
+    # 操作建议三要素
+    m9 = report.get("module_9_操作指南") or {}
+    if not isinstance(m9, dict):
+        m9 = {}
+    advice = {}
+    if m9.get("buy_strategy"):
+        advice["buy_strategy"] = m9["buy_strategy"]
+    if m9.get("stop_loss"):
+        advice["stop_loss"] = m9["stop_loss"]
+    if m9.get("take_profit"):
+        advice["take_profit"] = m9["take_profit"]
+
     return {
         "score": report.get("score"),
         "decision": report.get("decision"),
         "rating_sentence": m1.get("rating_sentence", ""),
         "core_logic": m1.get("core_logic", []),
-        "signal_attribution": report.get("signal_attribution", []),
+        "financials": financials,
+        "price_trend": price_trend,
+        "advice": advice,
     }
 
 
@@ -74,11 +115,37 @@ def build_history_context(rows: list[dict]) -> str:
             continue
         sk = extract_skeleton(report)
         logic = json.dumps(sk["core_logic"], ensure_ascii=False)
-        sections.append(
+
+        # 基本头部
+        section = (
             f"### {row.get('created_at', '未知时间')} · 评分 {sk['score']} · {sk['decision']}\n"
             f"一句话评级：{sk['rating_sentence']}\n"
             f"核心逻辑：{logic}"
         )
+
+        # 财务指标块
+        if sk.get("financials"):
+            lines = []
+            for ind in sk["financials"]:
+                lines.append(f"- {ind['name']}：{ind['value']}（{ind['trend']}）")
+            section += "\n财务指标：\n" + "\n".join(lines)
+
+        # 股价走势块
+        if sk.get("price_trend"):
+            section += f"\n股价走势：{sk['price_trend']}"
+
+        # 操作建议三要素块
+        adv = sk.get("advice") or {}
+        if adv:
+            section += "\n历史操作："
+            if adv.get("buy_strategy"):
+                section += f"\n- 建仓策略：{adv['buy_strategy']}"
+            if adv.get("stop_loss"):
+                section += f"\n- 止损参考：{adv['stop_loss']}"
+            if adv.get("take_profit"):
+                section += f"\n- 止盈参考：{adv['take_profit']}"
+
+        sections.append(section)
 
     if not sections:
         return ""
