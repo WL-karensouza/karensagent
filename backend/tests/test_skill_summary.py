@@ -41,3 +41,26 @@ def test_build_params_summary_uses_resolver():
         params = _build_params(SUMMARY_DIM, "600519")
     assert params["query"].startswith("贵州茅台"), f"实际: {params['query'][:50]}"
     print("[OK] _build_params 接入简称解析")
+
+
+def test_dim_collect_retries_on_transient_error():
+    """iFinD 间歇性拒绝（疑似限速）时，维度采集应自动重试一次"""
+    from stock_agent.skill import report as rp
+    from stock_agent.skill.report import _call_dim_with_retry
+    calls = []
+
+    def flaky_call(server, tool, params):
+        calls.append(1)
+        if len(calls) == 1:
+            return {"type": "answer", "text": "[错误] 未识别到有效的A股股票代码"}
+        return {"type": "answer", "text": "正常数据", "raw": {"k": "v"}}
+
+    with patch.object(rp, "call_skill", side_effect=flaky_call), \
+         patch.object(rp, "extract_text", side_effect=lambda r: r["text"]), \
+         patch.object(rp, "extract_raw", side_effect=lambda r: r.get("raw")), \
+         patch.object(rp.time, "sleep"):
+        text, raw = _call_dim_with_retry(SUMMARY_DIM, "600519")
+
+    assert text == "正常数据", f"重试后应拿到正常数据，实际: {text}"
+    assert len(calls) == 2, f"应重试到第 2 次成功，实际调用 {len(calls)} 次"
+    print("[OK] 维度采集间歇失败自动重试")

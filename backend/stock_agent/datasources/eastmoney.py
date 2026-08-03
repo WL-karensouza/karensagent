@@ -8,6 +8,14 @@
 """
 
 import requests
+import time
+
+# 东财对 UA 有检测：python-requests 默认 UA 会被服务端直接掐断连接
+# （RemoteDisconnected），必须伪装浏览器；境内 API 同时显式绕过系统代理，
+# 避免用户全局代理（GitHub 加速）宕掉时 ProxyError 拖死东财通道
+_BROWSER_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+               "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
+_NO_PROXY = {"http": None, "https": None}
 
 
 def _get_name_eastmoney(stock_code: str) -> str | None:
@@ -31,18 +39,29 @@ def _get_name_eastmoney(stock_code: str) -> str | None:
         market = "1" if pure[0] in ("6", "5") else "0"
         secid = f"{market}.{pure}"
 
-    # 收窄异常：网络错误 / JSON 解析 / 字段缺失分别对应明确类型，不再裸吞 Exception
+    # 东财对部分 IP 间歇性掐断连接（RemoteDisconnected）：重试最多 3 次，间隔 0.5s
+    r = None
+    for attempt in range(3):
+        try:
+            r = requests.get(
+                "https://push2.eastmoney.com/api/qt/stock/get",
+                params={"fltt": "2", "invt": "2", "fields": "f57,f58", "secid": secid},
+                timeout=5,
+                proxies=_NO_PROXY,
+                headers={"User-Agent": _BROWSER_UA},
+            )
+            break
+        except requests.RequestException:
+            if attempt == 2:
+                return None
+            time.sleep(0.5)
+    # 收窄异常：JSON 解析 / 字段缺失分别对应明确类型，不再裸吞 Exception
     try:
-        r = requests.get(
-            "https://push2.eastmoney.com/api/qt/stock/get",
-            params={"fltt": "2", "invt": "2", "fields": "f57,f58", "secid": secid},
-            timeout=5,
-        )
         data = r.json()
         name = (data.get("data") or {}).get("f58", "")  # data 字段可能为 None
         if name and len(name) >= 2:
             return name
-    except (requests.RequestException, ValueError, KeyError, TypeError, AttributeError):
+    except (ValueError, KeyError, TypeError, AttributeError):
         # ValueError 覆盖 JSONDecodeError；TypeError/KeyError 覆盖响应结构异常；AttributeError 覆盖 data 为 None 等非对象 JSON
         pass
     return None
@@ -87,6 +106,8 @@ def _fetch_ohlcv_eastmoney(stock_code: str) -> dict | None:
                 "lmt": "70",        # 取70条保证覆盖60个交易日
             },
             timeout=10,
+            proxies=_NO_PROXY,
+            headers={"User-Agent": _BROWSER_UA},
         )
         data = r.json()
         klines = (data.get("data") or {}).get("klines")  # data 字段可能为 None

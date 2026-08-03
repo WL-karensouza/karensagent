@@ -92,6 +92,24 @@ def _resolve_summary_query(stock_code: str) -> str:
     )
 
 
+def _call_dim_with_retry(dim: dict, stock_code: str, max_attempts: int = 2):
+    """单维度采集（含重试）：iFinD 会间歇性拒绝/限速，失败等 1 秒重试
+
+    Returns (text, raw)；最终失败抛 RuntimeError（携带最后一次错误信息）。
+    """
+    params = _build_params(dim, stock_code)
+    last_err = None
+    for attempt in range(max_attempts):
+        result = call_skill(dim["server"], dim["tool"], params)
+        text = extract_text(result)
+        if not (text.startswith("[错误]") or text.startswith("[无数据]") or text.startswith("[权限不足")):
+            return text, extract_raw(result)
+        last_err = text
+        if attempt < max_attempts - 1:
+            time.sleep(1.0)
+    raise RuntimeError(last_err)
+
+
 def _build_params(dim: dict, stock_code: str) -> dict:
     """根据维度配置和股票代码构建 SKILL 调用参数"""
     # 带查询模板的维度（港股）直接格式化
@@ -716,15 +734,9 @@ async def generate_report_stream(stock_code: str, dimensions: list[str] | None =
         })
 
         try:
-            params = _build_params(dim, stock_code)
-            result = await loop.run_in_executor(
-                None, call_skill, dim["server"], dim["tool"], params,
+            text, raw = await loop.run_in_executor(
+                None, _call_dim_with_retry, dim, stock_code,
             )
-            text = extract_text(result)
-            raw = extract_raw(result)
-
-            if text.startswith("[错误]") or text.startswith("[无数据]") or text.startswith("[权限不足"):
-                raise RuntimeError(text)
 
             # performance 维度：基于 OHLCV 自行计算全部技术指标
             # _enrich_performance 内含东财同步 HTTP，必须丢线程池避免阻塞事件循环
@@ -828,13 +840,7 @@ def generate_report_sync(stock_code: str, dimensions: list[str] | None = None) -
 
     for i, dim in enumerate(active_dims):
         try:
-            params = _build_params(dim, stock_code)
-            result = call_skill(dim["server"], dim["tool"], params)
-            text = extract_text(result)
-            raw = extract_raw(result)
-
-            if text.startswith("[错误]") or text.startswith("[无数据]") or text.startswith("[权限不足"):
-                raise RuntimeError(text)
+            text, raw = _call_dim_with_retry(dim, stock_code)
 
             # performance 维度：基于 OHLCV 自行计算全部技术指标
             if dim["key"] == "performance":
