@@ -59,8 +59,12 @@ def _extract_summary(report: dict) -> str:
 
 
 def save_stock_report(stock_code: str, stock_name: str, report: dict,
-                      markdown: str = "", token_used: int = 0) -> int:
-    """保存个股分析报告，返回报告 ID"""
+                      markdown: str = "", token_used: int = 0,
+                      debate_stats: str | None = None) -> int:
+    """保存个股分析报告，返回报告 ID
+
+    debate_stats: 双模型辩论过程 JSON 串（标准分析/降级报告为 null，前端角标据此显示）
+    """
     import json
     from models import StockReport
 
@@ -75,6 +79,7 @@ def save_stock_report(stock_code: str, stock_name: str, report: dict,
             report_json=json.dumps(report, ensure_ascii=False),
             markdown=markdown,
             token_used=token_used,
+            debate_stats=debate_stats,
         )
         db.add(obj)
         db.commit()

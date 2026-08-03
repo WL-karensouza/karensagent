@@ -82,10 +82,10 @@ class WatchlistUpdate(BaseModel):
 # ═══════════════════════════════════════════
 
 def _run_analysis(task_id: str, stock_code: str):
-    """后台执行个股分析：SKILL 取数 → LLM 分析 → 渲染 → 存库"""
+    """后台执行个股分析：SKILL 取数 → 双模型辩论分析（失败静默降级）→ 渲染 → 存库"""
     try:
         from stock_agent.skill.report import generate_report_sync
-        from stock_agent.analyze import analyze_with_validation
+        from stock_agent.debate import debate_with_fallback
         from stock_agent.render import render_markdown
         from database import save_stock_report
 
@@ -100,18 +100,24 @@ def _run_analysis(task_id: str, stock_code: str):
         stock_code = data_result.get("stock_code", stock_code)
         stock_name = data_result.get("stock_name", stock_code)
 
-        # Step 2: DeepSeek 分析
-        report, usage = analyze_with_validation(data_md, stock_code)
+        # Step 2: 双模型辩论分析（失败静默降级标准分析）
+        import json as _json
+        report, usage, d_stats = debate_with_fallback(data_md, stock_code)
+        if d_stats is not None:
+            total_tokens = usage["model_a"]["total"] + usage["model_b"]["total"]
+        else:
+            total_tokens = usage.get("total", 0)
 
         # Step 3: 渲染
-        md = render_markdown(stock_code, report, usage, stock_name)
+        md = render_markdown(stock_code, report, {"total": total_tokens}, stock_name)
 
         report_id = save_stock_report(
             stock_code=stock_code,
             stock_name=stock_name,
             report=report,
             markdown=md,
-            token_used=usage.get("total", 0),
+            token_used=total_tokens,
+            debate_stats=_json.dumps(d_stats, ensure_ascii=False) if d_stats else None,
         )
 
         _stock_tasks[task_id] = {
@@ -424,25 +430,54 @@ async def skill_report_invest(req: AnalyzeRequest):
             })
             return
 
-        # Phase 2: DeepSeek 分析
+        # Phase 2: 双模型辩论分析（失败静默降级标准分析）
         yield _format_sse_invest("progress", {
             "stage": "llm",
-            "label": "DeepSeek 分析",
+            "label": "双模型辩论分析",
             "status": "running",
             "current": dim_count,
             "total": dim_count,
         })
 
         try:
-            from stock_agent.analyze import analyze_with_validation, render_markdown
+            from stock_agent.debate import debate_with_fallback
+            from stock_agent.analyze import render_markdown
+            import queue as _queue
 
             loop = asyncio.get_running_loop()
-            report_json, usage = await loop.run_in_executor(
-                None, analyze_with_validation, report_md, req.stock_code,
-            )
-            invest_md = render_markdown(req.stock_code, report_json, usage, stock_name)
 
-            # 存库，前端跳转详情页需要 report_id
+            # 进度事件：线程内回调写队列，异步侧轮询转发为 SSE
+            progress_q = _queue.Queue()
+            debate_task = loop.run_in_executor(
+                None, debate_with_fallback, report_md, req.stock_code,
+                lambda stage, info=None: progress_q.put((stage, info)),
+            )
+            while not debate_task.done():
+                try:
+                    stage, info = progress_q.get_nowait()
+                    yield _format_sse_invest("progress", {
+                        "stage": stage, "label": info or stage, "status": "running",
+                        "current": dim_count, "total": dim_count,
+                    })
+                except _queue.Empty:
+                    await asyncio.sleep(1)
+            while not progress_q.empty():
+                stage, info = progress_q.get_nowait()
+                yield _format_sse_invest("progress", {
+                    "stage": stage, "label": info or stage, "status": "done",
+                    "current": dim_count, "total": dim_count,
+                })
+            report_json, usage, d_stats = debate_task.result()
+
+            # usage 归一化（辩论版为双模型分开统计）
+            if d_stats is not None:
+                total_tokens = usage["model_a"]["total"] + usage["model_b"]["total"]
+            else:
+                total_tokens = usage.get("total", 0)
+            usage_flat = {"total": total_tokens}
+            invest_md = render_markdown(req.stock_code, report_json, usage_flat, stock_name)
+
+            # 存库，前端跳转详情页需要 report_id；降级报告 debate_stats 为 null
             report_id = None
             try:
                 from database import save_stock_report
@@ -453,7 +488,8 @@ async def skill_report_invest(req: AnalyzeRequest):
                         stock_name=stock_name,
                         report=report_json,
                         markdown=invest_md,
-                        token_used=usage.get("total", 0),
+                        token_used=total_tokens,
+                        debate_stats=_json.dumps(d_stats, ensure_ascii=False) if d_stats else None,
                     ),
                 )
             except Exception:
@@ -461,7 +497,7 @@ async def skill_report_invest(req: AnalyzeRequest):
 
             yield _format_sse_invest("complete", {
                 "report": invest_md,
-                "usage": usage,
+                "usage": usage_flat,
                 "score": report_json.get("score"),
                 "decision": report_json.get("decision"),
                 "report_id": report_id,

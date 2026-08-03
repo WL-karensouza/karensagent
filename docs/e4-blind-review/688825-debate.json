@@ -1,0 +1,23 @@
+{
+  "rounds": 0,
+  "consensus": true,
+  "consensus_round": 0,
+  "initial": {
+    "a_score": 62,
+    "a_decision": "震荡",
+    "b_score": 58,
+    "b_decision": "震荡"
+  },
+  "final": {
+    "score": 60,
+    "decision": "看多",
+    "merged_by": "consensus"
+  },
+  "issues": [],
+  "citation_hit": {
+    "a": 0.25,
+    "b": 0.0
+  },
+  "round_traces": [],
+  "elapsed": 413.8
+}

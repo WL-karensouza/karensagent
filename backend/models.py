@@ -37,6 +37,7 @@ class StockReport(Base):
     report_json = Column(Text, nullable=False, comment="完整报告 JSON")
     markdown = Column(Text, default="", comment="Markdown 格式报告")
     token_used = Column(Integer, default=0, comment="消耗 Token 数")
+    debate_stats = Column(Text, nullable=True, comment="双模型辩论过程 JSON（标准分析/降级时为 null）")
     created_at = Column(DateTime, server_default=func.now(), comment="生成时间")
 
     __table_args__ = (

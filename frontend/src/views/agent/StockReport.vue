@@ -48,6 +48,12 @@ const reportData = computed(() => {
   }
 })
 
+/* 双模型深度分析角标：仅当 debate_stats 存在时显示（标准分析/降级报告无此字段） */
+const hasDebate = computed(() => {
+  const row = store.currentReport
+  return !!(row && row.debate_stats)
+})
+
 async function handlePush() {
   const row = store.currentReport
   if (!row) return
@@ -92,6 +98,7 @@ async function handlePush() {
             <ScoreGauge :score="reportData.score" :size="130" :decision="reportData.decision" />
             <div class="score-info">
               <DecisionBadge :decision="reportData.decision" />
+              <span v-if="hasDebate" class="debate-badge">🤝 双模型深度分析</span>
               <p class="score-desc">
                 综合评分 <strong :style="{ color: verdictColor(reportData.decision) }">{{ reportData.score }}</strong> / 100
               </p>
@@ -167,6 +174,20 @@ async function handlePush() {
   .report-layout { flex-direction: column; }
   .report-main { max-width: 860px; }
   .report-side { width: 100%; max-width: 860px; position: static; max-height: none; }
+}
+
+/* 双模型深度分析角标（仅辩论报告显示，降级报告无此字段自然不显示） */
+.debate-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6d5acd;
+  background: #f0eefc;
+  border: 1px solid #ddd8f7;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
 }
 
 /* 返回按钮 */
