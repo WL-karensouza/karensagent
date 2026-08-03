@@ -44,6 +44,33 @@ def test_build_params_summary_uses_resolver():
     print("[OK] _build_params 接入简称解析")
 
 
+def test_extract_stock_name_from_text_type_raw():
+    """iFinD 假错误使 extract_raw 降级 type=text，_extract_stock_name 也应能提名"""
+    from stock_agent.skill.report import _extract_stock_name
+    raw = {"type": "text", "text": "# A股上市公司基本信息\n"
+           "|证券代码|证券简称|公司证券全称|\n"
+           "|---|---|---|\n|600519.SH|贵州茅台|贵州茅台酒股份有限公司|"}
+    assert _extract_stock_name(raw, "600519") == "贵州茅台酒股份有限公司"
+    print("[OK] type=text 也能提公司名")
+
+
+def test_extract_stock_name_tencent_fallback():
+    """iFinD 提取与东财都失败时，腾讯备份应兜住名称（三重保险）"""
+    from stock_agent.skill import report as rp
+    raw = {"type": "text", "text": "无表格无关键词的垃圾文本"}
+    with patch.object(rp, "_get_name_eastmoney", return_value=None), \
+         patch.object(rp, "_get_name_tencent", return_value="贵州茅台"):
+        assert rp._extract_stock_name(raw, "600519") == "贵州茅台"
+    print("[OK] 腾讯兜底名称")
+
+
+def test_strip_error_prefix_wushuju_full():
+    """[无数据] 为 5 字符，剥离不得残留 ]"""
+    from stock_agent.skill.report import _strip_error_prefix
+    assert _strip_error_prefix("[无数据] # 表格数据") == "# 表格数据"
+    print("[OK] [无数据] 前缀完整剥离")
+
+
 def test_error_prefix_with_data_treated_as_success():
     """[错误] 前缀但携带实质数据表格 → iFinD 假错误，应按成功采集处理"""
     from stock_agent.skill import report as rp

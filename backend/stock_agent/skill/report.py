@@ -101,7 +101,7 @@ def _strip_error_prefix(text: str) -> str:
     if text.startswith("[错误]"):
         return text[4:].strip()
     if text.startswith("[无数据]"):
-        return text[4:].strip()
+        return text[5:].strip()  # [无数据] 为 5 字符，[4:] 会残留 ']'
     if text.startswith("[权限不足"):
         return text.split("]", 1)[-1].strip() if "]" in text else text[5:].strip()
     return text
@@ -435,13 +435,15 @@ def _name_from_pipe_table(text: str) -> str | None:
 
     优先取"公司中文名称/公司全称"列，其次"证券简称"列。
     """
+    # iFinD 表格的公司名列有多种写法（A股新表为"公司证券全称"），都要认
+    name_cols = ("公司中文名称", "公司全称", "公司证券全称")
     lines = [ln.strip() for ln in text.splitlines()]
     fallback = None
     for i, ln in enumerate(lines):
         if not ln.startswith("|"):
             continue
         headers = [c.strip() for c in ln.strip("|").split("|")]
-        if not any(h in ("公司中文名称", "公司全称", "证券简称") for h in headers):
+        if not any(h in (*name_cols, "证券简称") for h in headers):
             continue
         # 表头行之后跳过分隔行，取第一条数据行
         for data_ln in lines[i + 1:]:
@@ -451,7 +453,7 @@ def _name_from_pipe_table(text: str) -> str | None:
             if all(c.replace("-", "").replace(":", "") == "" for c in cells):
                 continue  # |---|---| 分隔行
             row = dict(zip(headers, cells))
-            for col in ("公司中文名称", "公司全称"):
+            for col in name_cols:
                 v = row.get(col, "")
                 if v and len(v) >= 2:
                     return v
@@ -470,7 +472,9 @@ def _extract_stock_name(raw, stock_code: str) -> str:
     """
     if raw is None:
         return stock_code
-    if raw.get("type") != "answer":
+    # iFinD 假错误（标[无数据]但返回数据）时 extract_raw 会降级为 type=text，
+    # 必须同样尝试提取，否则中文名称丢失（2026-08-04 实证根因）
+    if raw.get("type") not in ("answer", "text"):
         return stock_code
     text = raw.get("text", "")
     if not text:
@@ -494,8 +498,11 @@ def _extract_stock_name(raw, stock_code: str) -> str:
     if name and name != stock_code:
         return name
 
-    # 以上全部失败 → 东方财富 HTTP 兜底
+    # 以上全部失败 → 名称三重保险：东财 → 腾讯 → 代码本身
     fallback = _get_name_eastmoney(stock_code)
+    if fallback:
+        return fallback
+    fallback = _get_name_tencent(stock_code)
     if fallback:
         return fallback
 
