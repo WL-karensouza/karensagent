@@ -253,6 +253,82 @@ def test_render_markdown_usage_footer():
     assert "Token" in md
 
 
+# ═══════════════════════════════════════════
+# E1 v2：历史对比块三态渲染
+# ═══════════════════════════════════════════
+
+def test_render_history_changes_present():
+    """history_changes 非空 → 渲染历史对比条目列表"""
+    from stock_agent.render import render_markdown
+
+    report = {
+        "score": 72,
+        "decision": "看多",
+        "module_9_操作指南": {
+            "history_anchor": "2026-07-20",
+            "history_compared": True,
+            "changed_aspects": ["财务面", "股价面"],
+            "history_changes": [
+                "毛利率从 45% 降至 38%，2026-07-20 报告为 45%",
+                "股价从 5.2 涨至 6.1，趋势向上",
+            ],
+            "buy_strategy": "分批在 5.0-5.3 关注",
+            "stop_loss": "跌破 4.8 止损",
+            "take_profit": "6.0 附近止盈",
+            "holding_period": {"type": "中短线", "reason": "波段"},
+        },
+    }
+    md = render_markdown("600519", report, {"total": 100})
+    assert "历史对比（基准：2026-07-20 报告）" in md
+    assert "- 毛利率从 45% 降至 38%" in md
+    assert "- 股价从 5.2 涨至 6.1" in md
+    print("[OK] 渲染：历史对比有变化 → 条目列表")
+
+
+def test_render_history_no_change():
+    """history_compared=true 但 history_changes 为空 → 渲染无变化提示"""
+    from stock_agent.render import render_markdown
+
+    report = {
+        "score": 65,
+        "decision": "震荡",
+        "module_9_操作指南": {
+            "history_anchor": "2026-07-15",
+            "history_compared": True,
+            "changed_aspects": [],
+            "history_changes": [],
+            "buy_strategy": "观望",
+            "stop_loss": "跌破 4.0 止损",
+            "take_profit": "5.0 止盈",
+            "holding_period": {"type": "短线", "reason": "波动大"},
+        },
+    }
+    md = render_markdown("000001", report, {"total": 100})
+    assert "与 2026-07-15 报告对比无重大变化" in md
+    assert "历史对比（基准" not in md
+    print("[OK] 渲染：历史对比无变化 → 无重大变化提示")
+
+
+def test_render_history_no_fields():
+    """module_9 无历史字段 → 不渲染历史对比块（存量报告兼容）"""
+    from stock_agent.render import render_markdown
+
+    report = {
+        "score": 50,
+        "decision": "震荡",
+        "module_9_操作指南": {
+            "buy_strategy": "观望",
+            "stop_loss": "跌破 4.0 止损",
+            "take_profit": "5.0 止盈",
+            "holding_period": {"type": "短线", "reason": "波动大"},
+        },
+    }
+    md = render_markdown("000001", report, {"total": 100})
+    assert "历史对比" not in md
+    assert "无重大变化" not in md
+    print("[OK] 渲染：无历史字段 → 不渲染历史对比块")
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("TDD Step 6: render.py 测试 (v2 9模块)")
@@ -263,6 +339,10 @@ if __name__ == "__main__":
     test_render_markdown_all_modules()
     test_render_markdown_minimal()
     test_render_northbound_unavailable()
+    # E1 v2 历史对比三态渲染
+    test_render_history_changes_present()
+    test_render_history_no_change()
+    test_render_history_no_fields()
 
     print("\n" + "=" * 50)
     print("[OK] All tests passed")

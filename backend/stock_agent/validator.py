@@ -84,7 +84,11 @@ def is_collapsed_report(report) -> bool:
 # 校验主入口
 # ═══════════════════════════════════════════
 
-def validate_report(report: dict) -> list[str]:
+# 历史对比 changed_aspects 合法取值集合
+VALID_CHANGED_ASPECTS = {"财务面", "股价面", "操作建议"}
+
+
+def validate_report(report: dict, has_history: bool = False) -> list[str]:
     """语义校验报告 JSON，返回违规清单（空列表 = 全部通过）
 
     校验维度：
@@ -97,6 +101,7 @@ def validate_report(report: dict) -> list[str]:
       7. module_8 风险点 ≥ 2 个
       8. signal_attribution 权重非负且总和 = 1.0 ± 容差
       9. score 与 decision 方向一致性
+     10. has_history=True 时：历史对比 4 字段强制校验（E1 v2）
     """
     if not isinstance(report, dict):
         return ["报告不是 JSON 对象，无法校验"]
@@ -108,6 +113,8 @@ def validate_report(report: dict) -> list[str]:
     _check_module_counts(report, issues)
     _check_signal_attribution(report, issues)
     _check_consistency(report, issues)
+    if has_history:
+        _check_history_fields(report, issues)
     return issues
 
 
@@ -218,3 +225,52 @@ def _check_consistency(report: dict, issues: list[str]) -> None:
         issues.append(f"一致性矛盾：score={score}（≥{BULLISH_SCORE_FLOOR} 偏乐观）但 decision=看空")
     elif score <= BEARISH_SCORE_CEIL and decision == "看多":
         issues.append(f"一致性矛盾：score={score}（≤{BEARISH_SCORE_CEIL} 偏悲观）但 decision=看多")
+
+
+def _check_history_fields(report: dict, issues: list[str]) -> None:
+    """E1 v2 历史对比强制校验：has_history=True 时检查 module_9 的 4 个历史字段
+
+    规则（按简报）：
+      1. history_compared 必须为 true，缺失或非 true → 违规
+      2. history_anchor 非空且为 YYYY-MM-DD 形态 → 否则违规
+      3. changed_aspects 必须为 list 且取值 ⊆ {财务面, 股价面, 操作建议} → 否则违规
+      4. changed_aspects 非空 ⇔ history_changes 非空 → 不一致违规
+    """
+    import re as _re
+
+    m9 = report.get("module_9_操作指南")
+    if not isinstance(m9, dict):
+        issues.append("历史对比校验失败：module_9_操作指南 缺失或非对象")
+        return
+
+    # 规则 1：history_compared 必须为 true
+    hc = m9.get("history_compared")
+    if hc is not True:
+        issues.append("历史对比校验失败：history_compared 必须为 true（当前为 {}）".format(repr(hc)))
+
+    # 规则 2：history_anchor 非空且为 YYYY-MM-DD 形态
+    anchor = m9.get("history_anchor")
+    if not anchor or not isinstance(anchor, str) or not anchor.strip():
+        issues.append("历史对比校验失败：history_anchor 缺失或为空")
+    elif not _re.match(r"^\d{4}-\d{2}-\d{2}$", anchor.strip()):
+        issues.append(f"历史对比校验失败：history_anchor='{anchor}' 不是 YYYY-MM-DD 形态")
+
+    # 规则 3：changed_aspects 必须为 list 且取值 ⊆ 合法集合
+    aspects = m9.get("changed_aspects")
+    if not isinstance(aspects, list):
+        issues.append(f"历史对比校验失败：changed_aspects 必须为 list（当前为 {type(aspects).__name__}）")
+    else:
+        for i, a in enumerate(aspects):
+            if a not in VALID_CHANGED_ASPECTS:
+                issues.append(f"历史对比校验失败：changed_aspects[{i}]='{a}' 不在合法取值 {VALID_CHANGED_ASPECTS} 内")
+
+    # 规则 4：changed_aspects 非空 ⇔ history_changes 非空
+    changes = m9.get("history_changes")
+    aspects_non_empty = isinstance(aspects, list) and len(aspects) > 0
+    changes_non_empty = isinstance(changes, list) and len(changes) > 0
+    if aspects_non_empty != changes_non_empty:
+        issues.append(
+            f"历史对比校验失败：changed_aspects 与 history_changes 不一致"
+            f"（aspects={len(aspects) if isinstance(aspects, list) else '非list'}条，"
+            f"changes={len(changes) if isinstance(changes, list) else '非list'}条）"
+        )

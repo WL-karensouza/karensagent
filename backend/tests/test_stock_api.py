@@ -332,6 +332,95 @@ def test_push_report_endpoint_rejects_invalid_id():
     print(f"[OK] push report invalid id → code=1, msg={data['message']}")
 
 
+# ═══════════════════════════════════════════════
+# E1 v2：trend API 测试
+# ═══════════════════════════════════════════════
+
+def test_trend_api_returns_ascending_order():
+    """GET /api/stock/reports/trend/{code} 应返回时间升序数据"""
+    from fastapi.testclient import TestClient
+    from main import app
+    from database import save_stock_report, delete_stock_report
+
+    TEST_CODE = "TEST_TREND"
+
+    # 造两份报告：先存旧的、再存新的（id 递增，created_at 相近但不同）
+    rid1 = save_stock_report(TEST_CODE, "测试趋势", {"score": 72}, "# 旧报告", 100)
+    rid2 = save_stock_report(TEST_CODE, "测试趋势", {"score": 80}, "# 新报告", 120)
+
+    client = TestClient(app)
+    resp = client.get(f"/api/stock/reports/trend/{TEST_CODE}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["code"] == 0
+    items = data["data"]
+    assert isinstance(items, list)
+    assert len(items) >= 2
+
+    # 验证升序：时间戳应递增
+    timestamps = [item["created_at"] for item in items]
+    assert timestamps == sorted(timestamps), f"trend 应返回升序，实际: {timestamps}"
+
+    # 验证 score 字段存在
+    for item in items:
+        assert "score" in item
+        assert isinstance(item["score"], (int, float))
+
+    # 清理：按 stock_code 删除
+    delete_stock_report(TEST_CODE)
+    print("[OK] trend API：升序 + 字段正确")
+
+
+def test_trend_api_skips_invalid_scores():
+    """trend API 应跳过 score 为 None 或非数值的行"""
+    from fastapi.testclient import TestClient
+    from main import app
+    from database import SessionLocal, delete_stock_report
+    from models import StockReport
+
+    TEST_CODE = "SKIP_NONE"
+
+    # 先建一条正常报告，确保有数据供趋势查询
+    from database import save_stock_report
+    save_stock_report(TEST_CODE, "测试跳过", {"score": 60}, "# 正常", 100)
+
+    # 直接通过 ORM 插入一条 score=None 的记录
+    db = SessionLocal()
+    try:
+        r = StockReport(stock_code=TEST_CODE, stock_name="测试跳过", report_json="{}", score=None)
+        db.add(r)
+        db.commit()
+    finally:
+        db.close()
+
+    client = TestClient(app)
+    resp = client.get(f"/api/stock/reports/trend/{TEST_CODE}")
+    assert resp.status_code == 200
+    items = resp.json()["data"]
+    # 不应包含 score=None 的记录
+    scores = [item["score"] for item in items]
+    assert None not in scores, f"trend 不应包含 score=None 的记录，实际 scores: {scores}"
+
+    # 清理
+    delete_stock_report(TEST_CODE)
+    print("[OK] trend API：跳过无效 score")
+    print("[OK] trend API：跳过无效 score")
+
+
+def test_trend_api_empty_for_unknown_code():
+    """未知股票代码应返回空 data 列表"""
+    from fastapi.testclient import TestClient
+    from main import app
+
+    client = TestClient(app)
+    resp = client.get("/api/stock/reports/trend/UNKNOWN999")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["code"] == 0
+    assert data["data"] == []
+    print("[OK] trend API：未知代码返回空列表")
+
+
 # ============================================================
 # 测试隔离性：验证测试不会残留数据到生产库
 # ============================================================
@@ -390,6 +479,10 @@ if __name__ == "__main__":
         # Slice 1: 推送飞书
         test_push_report_endpoint_accepts_valid_id,
         test_push_report_endpoint_rejects_invalid_id,
+        # E1 v2: trend API
+        test_trend_api_returns_ascending_order,
+        test_trend_api_skips_invalid_scores,
+        test_trend_api_empty_for_unknown_code,
     ]
 
     for test_fn in tests:

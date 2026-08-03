@@ -333,6 +333,129 @@ def test_collapsed_non_dict():
     print("[OK] 坍塌判定：非 dict 兜底")
 
 
+# ═══════════════════════════════════════════
+# E1 v2：历史对比字段校验（has_history=True）
+# ═══════════════════════════════════════════
+
+def make_valid_report_with_history() -> dict:
+    """构造一份含历史对比字段的合规报告（has_history=True 基线）"""
+    r = make_valid_report()
+    r["module_9_操作指南"]["history_anchor"] = "2026-07-20"
+    r["module_9_操作指南"]["history_compared"] = True
+    r["module_9_操作指南"]["changed_aspects"] = ["财务面", "股价面"]
+    r["module_9_操作指南"]["history_changes"] = [
+        "毛利率从 45% 降至 38%，2026-07-20 报告为 45%，建议下调盈利预期",
+        "股价从 5.2 涨至 6.1，2026-07-20 为 5.2，趋势向上",
+    ]
+    return r
+
+
+def test_history_passes_when_has_history_true():
+    """has_history=True 时，合规历史字段应零违规"""
+    r = make_valid_report_with_history()
+    issues = validate_report(r, has_history=True)
+    assert issues == [], f"合规历史字段不应违规，实际: {issues}"
+    print("[OK] 历史对比基线：has_history=True 零违规")
+
+
+def test_history_skipped_when_has_history_false():
+    """has_history=False 时，即使历史字段缺失也不检查"""
+    r = make_valid_report()
+    # module_9 不含任何历史字段
+    issues = validate_report(r, has_history=False)
+    assert not any("历史对比" in i for i in issues), f"has_history=False 不应报历史违规: {issues}"
+    print("[OK] 历史对比：has_history=False 跳过历史字段检查")
+
+
+def test_history_compared_missing_or_not_true():
+    """history_compared 缺失或非 true → 违规"""
+    # 场景1：缺失
+    r = make_valid_report_with_history()
+    del r["module_9_操作指南"]["history_compared"]
+    issues = validate_report(r, has_history=True)
+    assert any("history_compared" in i for i in issues), f"缺失 history_compared 应违规: {issues}"
+
+    # 场景2：false
+    r2 = make_valid_report_with_history()
+    r2["module_9_操作指南"]["history_compared"] = False
+    issues2 = validate_report(r2, has_history=True)
+    assert any("history_compared" in i for i in issues2), f"history_compared=False 应违规: {issues2}"
+
+    # 场景3：None
+    r3 = make_valid_report_with_history()
+    r3["module_9_操作指南"]["history_compared"] = None
+    issues3 = validate_report(r3, has_history=True)
+    assert any("history_compared" in i for i in issues3), f"history_compared=None 应违规: {issues3}"
+    print("[OK] 历史对比：history_compared 缺失/非 true → 违规")
+
+
+def test_history_anchor_invalid():
+    """history_anchor 缺失或非 YYYY-MM-DD → 违规"""
+    # 场景1：缺失
+    r = make_valid_report_with_history()
+    del r["module_9_操作指南"]["history_anchor"]
+    issues = validate_report(r, has_history=True)
+    assert any("history_anchor" in i for i in issues), f"缺失 history_anchor 应违规: {issues}"
+
+    # 场景2：非日期格式
+    r2 = make_valid_report_with_history()
+    r2["module_9_操作指南"]["history_anchor"] = "昨天"
+    issues2 = validate_report(r2, has_history=True)
+    assert any("history_anchor" in i for i in issues2), f"非法 history_anchor 应违规: {issues2}"
+
+    # 场景3：空字符串
+    r3 = make_valid_report_with_history()
+    r3["module_9_操作指南"]["history_anchor"] = ""
+    issues3 = validate_report(r3, has_history=True)
+    assert any("history_anchor" in i for i in issues3), f"empty history_anchor 应违规: {issues3}"
+    print("[OK] 历史对比：history_anchor 格式校验")
+
+
+def test_changed_aspects_out_of_bounds():
+    """changed_aspects 取值越界 → 违规"""
+    r = make_valid_report_with_history()
+    r["module_9_操作指南"]["changed_aspects"] = ["财务面", "技术面"]  # 技术面不合法
+    issues = validate_report(r, has_history=True)
+    assert any("技术面" in i for i in issues), f"越界 changed_aspects 应违规: {issues}"
+    print("[OK] 历史对比：changed_aspects 取值越界 → 违规")
+
+
+def test_changed_aspects_not_list():
+    """changed_aspects 非 list → 违规"""
+    r = make_valid_report_with_history()
+    r["module_9_操作指南"]["changed_aspects"] = "财务面"  # 字符串而非列表
+    issues = validate_report(r, has_history=True)
+    assert any("changed_aspects" in i and "list" in i for i in issues), f"非 list 应违规: {issues}"
+    print("[OK] 历史对比：changed_aspects 非 list → 违规")
+
+
+def test_changed_aspects_history_changes_inconsistent():
+    """changed_aspects 非空但 history_changes 空 → 违规"""
+    r = make_valid_report_with_history()
+    r["module_9_操作指南"]["changed_aspects"] = ["财务面"]
+    r["module_9_操作指南"]["history_changes"] = []
+    issues = validate_report(r, has_history=True)
+    assert any("不一致" in i for i in issues), f"aspects 非空 changes 空应违规: {issues}"
+
+    # 反向：changed_aspects 空但 history_changes 非空
+    r2 = make_valid_report_with_history()
+    r2["module_9_操作指南"]["changed_aspects"] = []
+    r2["module_9_操作指南"]["history_changes"] = ["某变化"]
+    issues2 = validate_report(r2, has_history=True)
+    assert any("不一致" in i for i in issues2), f"aspects 空 changes 非空应违规: {issues2}"
+    print("[OK] 历史对比：changed_aspects 与 history_changes 不一致 → 违规")
+
+
+def test_history_both_empty_consistent():
+    """changed_aspects 与 history_changes 均为空时不应报不一致"""
+    r = make_valid_report_with_history()
+    r["module_9_操作指南"]["changed_aspects"] = []
+    r["module_9_操作指南"]["history_changes"] = []
+    issues = validate_report(r, has_history=True)
+    assert not any("不一致" in i for i in issues), f"双方均为空不应报不一致: {issues}"
+    print("[OK] 历史对比：双方均为空一致通过")
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("E0: validator.py 语义校验测试")
@@ -361,5 +484,14 @@ if __name__ == "__main__":
     test_collapsed_missing_score_or_decision()
     test_collapsed_modules_threshold()
     test_collapsed_non_dict()
+    # E1 v2 历史对比
+    test_history_passes_when_has_history_true()
+    test_history_skipped_when_has_history_false()
+    test_history_compared_missing_or_not_true()
+    test_history_anchor_invalid()
+    test_changed_aspects_out_of_bounds()
+    test_changed_aspects_not_list()
+    test_changed_aspects_history_changes_inconsistent()
+    test_history_both_empty_consistent()
     print("\n" + "=" * 50)
     print("[OK] All validator tests passed")

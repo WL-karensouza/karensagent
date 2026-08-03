@@ -242,6 +242,21 @@ def render_markdown(stock_code: str, report: dict, usage: dict, stock_name: str 
         out.append("---")
         out.append("")
         out.append("## 九、散户实战操作指南")
+
+        # ── 历史对比块（E1 v2）：三态渲染，在操作指南顶部、建仓策略之前 ──
+        history_changes = m9.get("history_changes", [])
+        history_compared = m9.get("history_compared", False)
+        history_anchor = m9.get("history_anchor", "")
+        if isinstance(history_changes, list) and len(history_changes) > 0:
+            out.append("")
+            out.append(f"**历史对比（基准：{history_anchor} 报告）：**")
+            out.append("")
+            for item in history_changes:
+                out.append(f"- {item}")
+        elif history_compared is True:
+            out.append("")
+            out.append(f"- 与 {history_anchor} 报告对比无重大变化")
+
         if buy:
             out.append("")
             out.append(f"- **建仓策略**：{buy}")

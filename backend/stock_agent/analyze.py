@@ -397,7 +397,8 @@ def analyze_with_validation(markdown_report: str, stock_code: str = "") -> tuple
         print(f"[analyze] ⚠️ {e}，自动整体重试生成一次", file=sys.stderr)
         report, usage2 = analyze(markdown_report, history_context)
         usage = _add_usage(e.usage, usage2)
-    issues = validate_report(report)
+    has_history = bool(history_context)
+    issues = validate_report(report, has_history=has_history)
     if not issues:
         return report, usage
 
@@ -409,7 +410,7 @@ def analyze_with_validation(markdown_report: str, stock_code: str = "") -> tuple
         before = len(issues)
         # 结构门关先于完整校验：坍塌残片违规数反而少，防"谁少采纳谁"误纳，也省白校验
         if not is_collapsed_report(repaired):
-            issues_after = validate_report(repaired)
+            issues_after = validate_report(repaired, has_history=has_history)
             if len(issues_after) < before:
                 report, issues = repaired, issues_after
                 print(f"[analyze] → 修正后违规数 {before} → {len(issues)}", file=sys.stderr)

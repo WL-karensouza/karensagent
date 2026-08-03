@@ -252,6 +252,28 @@ def get_report(report_id: int):
     return {"code": 0, "data": row}
 
 
+@router.get("/reports/trend/{stock_code}")
+def get_report_trend(stock_code: str):
+    """获取某股历史报告评分趋势（时间升序，供前端折线图）
+
+    复用 get_recent_reports（倒序），反转为升序；
+    跳过 score 为 None 或非数值的行。
+    """
+    from database import get_recent_reports
+
+    rows = get_recent_reports(stock_code)
+    # 跳过 score 为 None 或非数值的行，再反转为升序
+    data = []
+    for r in reversed(rows):
+        s = r.get("score")
+        if s is None:
+            continue
+        if not isinstance(s, (int, float)) or isinstance(s, bool):
+            continue
+        data.append({"created_at": r.get("created_at", ""), "score": s})
+    return {"code": 0, "data": data}
+
+
 @router.get("/watchlist")
 def list_watchlist():
     """获取自选股列表"""
