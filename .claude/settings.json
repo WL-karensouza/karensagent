@@ -88,7 +88,12 @@
       "Bash(python -m pytest tests/test_analyze.py -v)",
       "Bash(git add *)",
       "Bash(\"C:/Users/王磊/.claude/skills/subagent-driven-development/scripts/task-brief\" \"docs/superpowers/plans/2026-07-29-stock-agent-code-review-fixes.md\" 3)",
-      "Bash(python -m pytest tests/test_skill_extract.py -v)"
+      "Bash(python -m pytest tests/test_skill_extract.py -v)",
+      "Read(//d/Hello-Agent/transformer/**)",
+      "Read(//d/Hello-Agent/prompt paradigm/plan and solve/**)",
+      "Read(//d/Hello-Agent/transformer/section 1/**)",
+      "Read(//d/Hello-Agent/prompt paradigm/ReAct/**)",
+      "Read(//d/Hello-Agent/prompt paradigm/reflection/**)"
     ]
   },
   "hooks": {
