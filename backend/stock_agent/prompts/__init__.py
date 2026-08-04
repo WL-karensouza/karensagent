@@ -36,7 +36,7 @@ def build_user_prompt(markdown_report: str, history_context: str = "") -> str:
 
     Args:
         markdown_report: SKILL 返回的 Markdown 综合数据报告
-        history_context: stock_agent.history 构建的历史报告骨架上下文（空串 = 不注入历史）
+        history_context: stock_agent.core.history 构建的历史报告骨架上下文（空串 = 不注入历史）
     """
     parts = [
         "以下是同花顺 iFinD SKILL 为该股票采集的综合数据报告，请基于此数据进行分析：",

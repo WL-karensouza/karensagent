@@ -10,7 +10,7 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
-from stock_agent.history import (
+from stock_agent.core.history import (
     sample_history_indices,
     extract_skeleton,
     build_history_context,

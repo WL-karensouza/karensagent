@@ -15,14 +15,14 @@ sys.path.insert(0, str(BACKEND_DIR))
 
 def test_render_markdown_exists():
     """render_markdown 存在于 render.py"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
     assert callable(render_markdown)
     print("[OK] render_markdown 函数存在")
 
 
 def test_render_markdown_basic():
     """基本报告渲染：包含评分、判断、核心结论"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {
         "score": 75,
@@ -46,7 +46,7 @@ def test_render_markdown_basic():
 
 def test_render_markdown_all_modules():
     """所有 9 模块的渲染"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {
         "score": 68,
@@ -166,7 +166,7 @@ def test_render_markdown_all_modules():
 
 def test_render_markdown_minimal():
     """最小输入不崩溃"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {"score": 50, "decision": "震荡"}
     usage = {"total": 100}
@@ -179,7 +179,7 @@ def test_render_markdown_minimal():
 
 def test_render_northbound_unavailable():
     """北向资金数据不可用时的渲染"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {
         "score": 60,
@@ -199,7 +199,7 @@ def test_render_northbound_unavailable():
 
 def test_render_markdown_float_score():
     """浮点评分（如 85.5）应按比例渲染进度条，而不是空条"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {"score": 85.5, "decision": "看多"}
     md = render_markdown("600519", report, {"total": 100})
@@ -209,7 +209,7 @@ def test_render_markdown_float_score():
 
 def test_render_markdown_numeric_string_score():
     """字符串数字评分（如 LLM 偶发返回 "85"）也应正常渲染"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {"score": "85", "decision": "看多"}
     md = render_markdown("600519", report, {"total": 100})
@@ -218,7 +218,7 @@ def test_render_markdown_numeric_string_score():
 
 def test_render_markdown_invalid_score_empty_bar():
     """非数字评分（N/A）渲染空条且不崩溃"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {"score": "N/A", "decision": "震荡"}
     md = render_markdown("600519", report, {"total": 100})
@@ -227,7 +227,7 @@ def test_render_markdown_invalid_score_empty_bar():
 
 def test_render_markdown_pipe_escaped():
     """模块3 表格字段含管道符时应转义，避免破坏 Markdown 表格布局"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {
         "score": 60,
@@ -245,7 +245,7 @@ def test_render_markdown_pipe_escaped():
 
 def test_render_markdown_usage_footer():
     """页脚应渲染 token 消耗（usage 参数不再是死参数）"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {"score": 75, "decision": "看多"}
     md = render_markdown("600519", report, {"prompt": 5000, "completion": 2000, "total": 7000})
@@ -259,7 +259,7 @@ def test_render_markdown_usage_footer():
 
 def test_render_history_changes_present():
     """history_changes 非空 → 渲染历史对比条目列表"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {
         "score": 72,
@@ -287,7 +287,7 @@ def test_render_history_changes_present():
 
 def test_render_history_no_change():
     """history_compared=true 但 history_changes 为空 → 渲染无变化提示"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {
         "score": 65,
@@ -311,7 +311,7 @@ def test_render_history_no_change():
 
 def test_render_history_no_fields():
     """module_9 无历史字段 → 不渲染历史对比块（存量报告兼容）"""
-    from stock_agent.render import render_markdown
+    from stock_agent.core.render import render_markdown
 
     report = {
         "score": 50,

@@ -10,7 +10,7 @@ from pathlib import Path
 BACKEND_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
-from stock_agent.validator import validate_report, is_collapsed_report
+from stock_agent.core.validator import validate_report, is_collapsed_report
 
 
 def make_valid_report() -> dict:

@@ -87,7 +87,7 @@ def _run_analysis(task_id: str, stock_code: str):
     try:
         from stock_agent.skill.report import generate_report_sync
         from stock_agent.analyze import analyze_with_validation
-        from stock_agent.render import render_markdown
+        from stock_agent.core.render import render_markdown
         from database import save_stock_report
 
         # Step 1: SKILL 采集 10 维度数据 → Markdown 报告
@@ -139,7 +139,7 @@ def _run_watchlist_analyze(task_id: str):
     try:
         from stock_agent.skill.report import generate_report_sync
         from stock_agent.analyze import analyze_with_validation
-        from stock_agent.render import render_markdown
+        from stock_agent.core.render import render_markdown
         from database import save_stock_report, get_watchlist
 
         watchlist = get_watchlist()

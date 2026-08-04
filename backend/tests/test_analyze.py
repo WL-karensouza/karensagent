@@ -448,7 +448,7 @@ _COLLAPSED_FRAGMENT = '{"type": "估值陷阱", "level": "高", "desc": "PE 1852
 def test_analyze_collapsed_fragment_raises():
     """容错解析把思考草稿残片救成合法 dict 时，analyze 应判坍塌抛错，不得返回半成品"""
     from stock_agent.analyze import analyze
-    from stock_agent.validator import StructuralCollapseError
+    from stock_agent.core.validator import StructuralCollapseError
 
     with patch('stock_agent.analyze.OpenAI') as mock_openai:
         mock_client = MagicMock()
@@ -488,7 +488,7 @@ def test_analyze_with_validation_retries_on_collapse():
 def test_analyze_with_validation_retry_still_collapsed_raises():
     """连续两遍坍塌 → 抛错（前端明确提示失败），不得静默放行存库"""
     from stock_agent.analyze import analyze_with_validation
-    from stock_agent.validator import StructuralCollapseError
+    from stock_agent.core.validator import StructuralCollapseError
 
     with patch('stock_agent.analyze.OpenAI') as mock_openai:
         mock_client = MagicMock()

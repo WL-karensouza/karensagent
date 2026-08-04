@@ -17,8 +17,8 @@ BACKEND = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND))
 
 from stock_agent.analyze import analyze, build_user_prompt
-from stock_agent.history import build_history_context, sample_history_indices
-from stock_agent.render import render_markdown
+from stock_agent.core.history import build_history_context, sample_history_indices
+from stock_agent.core.render import render_markdown
 from stock_agent.skill.report import generate_report_sync
 from database import get_recent_reports, SessionLocal
 from models import StockReport

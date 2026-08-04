@@ -146,7 +146,7 @@ def analyze(markdown_report: str, history_context: str = "") -> tuple[dict, dict
 # 3.5 语义校验 + 定点修正（E0 质量层）
 # ═══════════════════════════════════════════
 
-from stock_agent.validator import (
+from stock_agent.core.validator import (
     validate_report,
     is_collapsed_report,
     StructuralCollapseError,
@@ -228,7 +228,7 @@ def analyze_with_validation(markdown_report: str, stock_code: str = "") -> tuple
     if stock_code:
         try:
             from database import get_recent_reports
-            from stock_agent.history import build_history_context
+            from stock_agent.core.history import build_history_context
             history_context = build_history_context(get_recent_reports(stock_code))
             if history_context:
                 print(f"[analyze] 已注入 {stock_code} 历史对比上下文（{len(history_context)} 字符）", file=sys.stderr)
@@ -273,7 +273,7 @@ def analyze_with_validation(markdown_report: str, stock_code: str = "") -> tuple
 # 4. 报告渲染（从 render 模块导入）
 # ═══════════════════════════════════════════
 
-from stock_agent.render import render_markdown  # noqa: F401 — 保持向后兼容，原调用方可继续 from analyze import render_markdown
+from stock_agent.core.render import render_markdown  # noqa: F401 — 保持向后兼容，原调用方可继续 from analyze import render_markdown
 
 
 # ═══════════════════════════════════════════
