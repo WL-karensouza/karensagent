@@ -69,6 +69,14 @@ async def ask(stock_code: str, req: AskRequest):
             ),
         )
 
+        # 问答失败：run_qa_agent 内部已吞异常并返回错误文案，
+        # 此处 emit error 事件告知前端，不流式输出、不 emit done
+        if not result["success"]:
+            yield _sse({"type": "error", "message": result["answer"]})
+            # 记录失败回复，保持历史完整（后续不 emit done）
+            add_message(session["id"], "assistant", result["answer"], None)
+            return
+
         # 工具调用事件（前端步骤卡片）
         for tc in result["tool_calls"]:
             yield _sse({"type": "tool_done", "name": tc["name"],
