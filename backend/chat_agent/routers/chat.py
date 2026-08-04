@@ -54,6 +54,13 @@ async def ask(stock_code: str, req: AskRequest):
     # 构建报告上下文（固定锚点：取最新报告结论摘要）
     report_context = _build_report_context(req.report_id, stock_code)
 
+    # 取最近 8 轮对话历史（每轮含 user+assistant 两条，共 16 条；不含当前提问）
+    # 先取历史再落库当前问题，避免把本轮问题混入上下文；顺序为时间正序（越早在前）
+    history = [
+        {"role": m["role"], "content": m["content"]}
+        for m in list_messages(session["id"])[-16:]
+    ]
+
     # 记录用户消息
     add_message(session["id"], "user", req.question)
 
@@ -65,7 +72,7 @@ async def ask(stock_code: str, req: AskRequest):
             None,
             lambda: run_qa_agent(
                 req.question, stock_code, req.stock_name or session["stock_name"],
-                report_context, [],
+                report_context, [], history,
             ),
         )
 

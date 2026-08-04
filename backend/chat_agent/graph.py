@@ -67,13 +67,29 @@ def _understand(question: str, stock_code: str, stock_name: str) -> dict:
         }
 
 
-def _tool_loop(question: str, tool_hints: list[str]) -> tuple[list, list]:
+def _format_history(history: list[dict] | None) -> str:
+    """把历史消息列表转成 prompt 文本（越早的在前）"""
+    if not history:
+        return "（无历史对话）"
+    lines = []
+    for msg in history:
+        role = msg.get("role", "")
+        content = (msg.get("content") or "").strip()
+        label = "用户" if role == "user" else "助手"
+        lines.append(f"{label}：{content}")
+    return "\n".join(lines)
+
+
+def _tool_loop(question: str, target_code: str, tool_hints: list[str]) -> tuple[list, list]:
     """Function Calling 循环，返回 (tool_results_text, tool_calls_records)
 
     tool_calls_records: [{name, label, ok, duration_ms}] —— 供前端步骤卡片
     """
     tools = _build_tools_for(tool_hints)
-    messages = [{"role": "user", "content": question}]
+    # 注入目标股票代码上下文（D7 跨股票提问关键）：让 LLM 能生成带交易所后缀
+    # 的 symbols（如 000858.SZ），结构化工具（如 highfreq_quotes）才能查对股票
+    context_question = f"当前对话股票目标：{target_code}。问题：{question}"
+    messages = [{"role": "user", "content": context_question}]
     results = []
     records = []
 
@@ -136,23 +152,36 @@ def _tool_loop(question: str, tool_hints: list[str]) -> tuple[list, list]:
     return "\n\n".join(results), records
 
 
-def _answer(question: str, stock_code: str, stock_name: str,
-            report_context: str, tool_results: str, is_off_topic: bool) -> str:
-    """生成最终回答（工具结果 / 报告 / 历史）"""
+def _answer(question: str, stock_code: str, stock_name: str, target_code: str,
+            report_context: str, tool_results: str, is_off_topic: bool,
+            history: list[dict] | None = None) -> str:
+    """生成最终回答（工具结果 / 报告 / 历史）
+
+    Args:
+        stock_code: 会话绑定股票（报告锚点，始终保持）
+        target_code: understand 解析的目标股票（跨股票提问时与 stock_code 不同）
+        history: 最近 8 轮历史 [{role, content}]，注入 prompt 供理解追问
+    """
     from .prompts import ANSWER_PROMPT, REPORT_ONLY_PROMPT, DISCLAIMER
 
     if is_off_topic:
         return "karens暂时无法回答您这个问题哦？"
 
+    history_text = _format_history(history)
+    # 跨股票提问时标注目标股票，让 LLM 把工具数据归属到目标股票；同股则留空
+    target_line = f"目标股票：{target_code}" if target_code and target_code != stock_code else ""
+
     if tool_results.strip():
         prompt = ANSWER_PROMPT.format(
             question=question, stock_code=stock_code, stock_name=stock_name,
-            report_context=report_context, tool_results=tool_results,
+            target_line=target_line, report_context=report_context,
+            tool_results=tool_results, history=history_text,
         )
     else:
         prompt = REPORT_ONLY_PROMPT.format(
             question=question, stock_code=stock_code, stock_name=stock_name,
-            report_context=report_context,
+            target_line=target_line, report_context=report_context,
+            history=history_text,
         )
 
     resp = _get_client().chat.completions.create(
@@ -167,8 +196,17 @@ def _answer(question: str, stock_code: str, stock_name: str,
 
 
 def run_qa_agent(question: str, stock_code: str, stock_name: str,
-                 report_context: str, tool_hints: list[str]) -> dict:
+                 report_context: str, tool_hints: list[str],
+                 history: list[dict] | None = None) -> dict:
     """总入口：understand → tool_loop → answer
+
+    Args:
+        question: 用户本轮问题
+        stock_code: 会话绑定股票代码（报告锚点）
+        stock_name: 会话绑定股票名称
+        report_context: 注入的报告结论摘要
+        tool_hints: 预设工具方向（understand 失败时兜底）
+        history: 最近 8 轮历史 [{role, content}]，供 answer 注入上下文
 
     Returns:
         {
@@ -183,14 +221,16 @@ def run_qa_agent(question: str, stock_code: str, stock_name: str,
         und = _understand(question, stock_code, stock_name)
         is_off_topic = und["is_off_topic"]
         needs_tools = und["needs_tools"] and not is_off_topic
+        # 目标股票：understand 提取（跨股票提问 D7），否则默认会话股票
+        target_code = und.get("stock_code") or stock_code
 
         tool_results, records = "", []
         if needs_tools:
             hints = und["tool_hints"] or tool_hints
-            tool_results, records = _tool_loop(question, hints)
+            tool_results, records = _tool_loop(question, target_code, hints)
 
-        answer = _answer(question, stock_code, stock_name,
-                         report_context, tool_results, is_off_topic)
+        answer = _answer(question, stock_code, stock_name, target_code,
+                         report_context, tool_results, is_off_topic, history)
         return {
             "answer": answer,
             "is_off_topic": is_off_topic,
@@ -212,12 +252,16 @@ def run_qa_agent(question: str, stock_code: str, stock_name: str,
 def _build_tools_for(tool_hints: list[str]) -> list[dict]:
     """按 tool_hints 选择工具服务，构建 Function Calling tools 参数
 
-    简化：默认拉 stock + news 两个服务的全部工具描述；
-    港股相关 hint 追加 global_stock。
+    默认拉 stock + news 两个服务的全部工具描述；
+    港股相关 hint 追加 global_stock；指数/板块 hint 追加 index；基金 hint 追加 fund。
     """
     servers = ["stock", "news"]
     if any("港股" in h or "global" in str(h) for h in tool_hints):
         servers.append("global_stock")
+    if any(("指数" in h or "板块" in h or "index" in str(h)) for h in tool_hints):
+        servers.append("index")
+    if any(("基金" in h or "fund" in str(h)) for h in tool_hints):
+        servers.append("fund")
     tools = []
     for server in servers:
         for t in get_tool_descriptions(server):

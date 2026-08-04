@@ -431,9 +431,17 @@ export const useStockStore = defineStore('stock', {
     /**
      * 发送问答（SSE 流式），内部管理 thinking/toolSteps/chatAsking 状态。
      * 组件只调此 action，不直接 import api（符合项目惯例）。
+     *
+     * 在途 SSE 隔离：请求发出后若用户已切换到其他股票（chatSession 变化），
+     * 旧请求的回调按会话归属校验丢弃，不写入 chatMessages，避免跨会话污染；
+     * 但最终收尾仍重置状态，防止 chatAsking 永久卡死。
      * @returns {AbortController}
      */
     askChat(stockCode, { question, report_id, stock_name }) {
+      const reqCode = stockCode
+      // 归属校验：会话未加载时视为当前（尚无可污染对象）；会话已知后必须与本次请求代码一致
+      const isCurrent = () => !this.chatSession || this.chatSession.stock_code === reqCode
+
       this.chatAsking = true
       this.chatThinking = true
       this.chatToolSteps = []
@@ -443,8 +451,10 @@ export const useStockStore = defineStore('stock', {
       const controller = api.fetchChatAsk(stockCode, {
         question, report_id, stock_name,
       }, {
-        onThinking: () => { this.chatThinking = true },
+        onThinking: () => { if (isCurrent()) this.chatThinking = true },
         onToolDone: (d) => {
+          // 归属不符：丢弃（不写入步骤卡片）
+          if (!isCurrent()) return
           this.chatThinking = false
           stepId++
           this.chatToolSteps.push({
@@ -454,20 +464,25 @@ export const useStockStore = defineStore('stock', {
           })
         },
         onDelta: (d) => {
+          // 归属不符：丢弃增量，避免旧回答拼进新会话
+          if (!isCurrent()) return
           const last = this.chatMessages[this.chatMessages.length - 1]
           if (last && last.role === 'assistant') last.content += d.text
           else this.chatMessages.push({ role: 'assistant', content: d.text, tool_calls: null })
         },
         onDone: (d) => {
-          const last = this.chatMessages[this.chatMessages.length - 1]
-          if (last && last.role === 'assistant') last.content = d.full
-          else this.chatMessages.push({ role: 'assistant', content: d.full, tool_calls: null })
+          if (isCurrent()) {
+            const last = this.chatMessages[this.chatMessages.length - 1]
+            if (last && last.role === 'assistant') last.content = d.full
+            else this.chatMessages.push({ role: 'assistant', content: d.full, tool_calls: null })
+          }
+          // 无论归属如何都重置状态，避免旧请求卡死新会话的输入
           this.chatThinking = false
           this.chatToolSteps = []
           this.chatAsking = false
         },
         onError: (e) => {
-          this.showToast(e.message || '回答失败')
+          if (isCurrent()) this.showToast(e.message || '回答失败')
           this.chatThinking = false
           this.chatToolSteps = []
           this.chatAsking = false
