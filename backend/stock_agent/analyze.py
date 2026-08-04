@@ -315,11 +315,15 @@ def _add_usage(a: dict, b: dict) -> dict:
     return {k: a.get(k, 0) + b.get(k, 0) for k in ("prompt", "completion", "total")}
 
 
-def _repair_report(report: dict, issues: list[str]) -> tuple[dict, dict]:
+def _repair_report(report: dict, issues: list[str], history_context: str = "") -> tuple[dict, dict]:
     """将违规清单回传 LLM，要求其输出修正后的完整 JSON，返回 (report, usage)
 
     修正 prompt 只要求修复违规处、禁止改动合规字段；解析失败时向上抛异常，
     由 analyze_with_validation 兜底保留原报告。
+
+    Args:
+        history_context: 历史报告骨架上下文（E1），非空时注入修正 prompt，
+                         防止修正 LLM 无真实历史日期可查时编造 YYYY-MM-DD
     """
     api_key = os.environ.get("DEEPSEEK_API_KEY", "")
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
@@ -336,6 +340,10 @@ def _repair_report(report: dict, issues: list[str]) -> tuple[dict, dict]:
             {"role": "user", "content": (
                 f"违反的规则清单：\n{issues_text}\n\n"
                 f"原始报告 JSON：\n{json.dumps(report, ensure_ascii=False)}"
+                + (f"\n\n【历史对比上下文】\n{history_context}\n\n"
+                   f"修正涉及 module_9 的 history_anchor / history_changes / changed_aspects / history_compared 字段时，"
+                   f"必须严格依据上方历史上下文中已有的日期与变化信息填写，不得编造任何 YYYY-MM-DD 日期或虚构变化内容。"
+                   if history_context else "")
             )},
         ],
         extra_body={"thinking": {"type": "enabled"}},
@@ -404,7 +412,7 @@ def analyze_with_validation(markdown_report: str, stock_code: str = "") -> tuple
 
     print(f"[analyze] ⚠️ 校验发现 {len(issues)} 处违规，尝试定点修正: {issues[:3]}", file=sys.stderr)
     try:
-        repaired, repair_usage = _repair_report(report, issues)
+        repaired, repair_usage = _repair_report(report, issues, history_context)
         # 累积修正调用成本
         usage = _add_usage(usage, repair_usage)
         before = len(issues)

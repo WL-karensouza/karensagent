@@ -535,6 +535,36 @@ def test_analyze_with_validation_repair_collapsed_not_adopted():
     print("[OK] analyze_with_validation: 坍塌修正结果不采纳")
 
 
+def test_repair_report_injects_history_context():
+    """_repair_report 的 history_context 非空时，修正 prompt 应包含历史上下文，
+    防止修正 LLM 在无真实历史日期时编造 module_9 的 history_anchor / history_changes"""
+    from stock_agent.analyze import _repair_report
+
+    bad_report = make_valid_report()
+    bad_report["module_9_操作指南"]["history_compared"] = True
+    bad_report["module_9_操作指南"]["history_anchor"] = ""
+    bad_report["module_9_操作指南"]["history_changes"] = []
+
+    with patch('stock_agent.analyze.OpenAI') as mock_openai:
+        mock_client = MagicMock()
+        mock_openai.return_value = mock_client
+        mock_client.chat.completions.create.return_value = _mock_completion(
+            _json.dumps(make_valid_report(), ensure_ascii=False)
+        )
+
+        _repair_report(bad_report, ["module_9_操作指南 缺少子字段 history_anchor"],
+                       history_context="上一份报告日期：2025-12-31")
+
+        # 取出修正调用的 user prompt 内容
+        messages = mock_client.chat.completions.create.call_args[1]["messages"]
+        user_msg = messages[1]["content"]
+
+        assert "历史对比上下文" in user_msg, "修正 prompt 应包含历史上下文标记"
+        assert "2025-12-31" in user_msg, "修正 prompt 应包含真实历史日期"
+        assert "不得编造" in user_msg, "修正 prompt 应包含禁止编造指令"
+    print("[OK] _repair_report: history_context 非空时注入修正 prompt")
+
+
 if __name__ == "__main__":
     print("=" * 50)
     print("TDD Step 5: analyze.py 测试 (v2 9模块)")
