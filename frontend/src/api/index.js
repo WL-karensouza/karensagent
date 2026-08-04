@@ -206,7 +206,7 @@ export const getChatMessages = (stockCode, limit = 100) =>
  * SSE 问答：流式获取 karens 回答
  * @param {string} stockCode
  * @param {object} body  { question, report_id, stock_name }
- * @param {object} callbacks { onThinking, onToolDone, onDelta, onDone, onError }
+ * @param {object} callbacks { onThinking, onToolDone, onDelta, onDone, onError, onStreamEnd }
  * @returns {AbortController}
  */
 export function fetchChatAsk(stockCode, body, callbacks = {}) {
@@ -240,8 +240,11 @@ export function fetchChatAsk(stockCode, body, callbacks = {}) {
         } catch (_) {}
       }
     }
+    // 流已正常关闭（可能未 emit done/error）→ 兜底收尾，防止前端状态卡死
+    callbacks.onStreamEnd?.()
   }).catch(err => {
     if (err.name !== 'AbortError') callbacks.onError?.(err)
+    callbacks.onStreamEnd?.()
   })
   return controller
 }

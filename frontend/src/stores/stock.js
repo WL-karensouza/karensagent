@@ -472,6 +472,12 @@ export const useStockStore = defineStore('stock', {
           this.chatToolSteps = []
           this.chatAsking = false
         },
+        /* 流结束兜底：SSE 干净关闭但未 emit done/error 时，防止 chatAsking 永久卡住 */
+        onStreamEnd: () => {
+          this.chatThinking = false
+          this.chatToolSteps = []
+          this.chatAsking = false
+        },
       })
       return controller
     },
