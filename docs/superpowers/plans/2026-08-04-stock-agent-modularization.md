@@ -1007,20 +1007,21 @@ git commit -m "refactor(stock_agent): skill/report 拆分为 collect/parse/forma
 
 ---
 
-### Task 4: 新建 core 子包（analyze/parser/repair/validator/render/history）
+### Task 4: 新建 core 子包（parser/repair/validator/render/history）
+
+> **注意（Task 4/5 冲突修正）**：`core/analyze.py` **不建**。analyze 主体因 `patch('stock_agent.analyze.OpenAI')` monkeypatch 约束必须留在 `stock_agent/analyze.py`（Task 5 Step 1）。若 Task 4 建了 core/analyze.py，Task 5 后即无人引用的死代码。core 只承载从 analyze.py 剥离的 parser/repair + 复制的 validator/render/history。
 
 **Files:**
 - Create: `backend/stock_agent/core/__init__.py`
 - Create: `backend/stock_agent/core/parser.py`
 - Create: `backend/stock_agent/core/repair.py`
-- Create: `backend/stock_agent/core/analyze.py`
 - Create: `backend/stock_agent/core/validator.py`
 - Create: `backend/stock_agent/core/render.py`
 - Create: `backend/stock_agent/core/history.py`
 
 **Interfaces:**
 - Consumes: `stock_agent.prompts` 的 `build_system_prompt`/`build_user_prompt`；`stock_agent.models` 的 `DataIncompleteError`；`stock_agent.skill.report` 的 `generate_report_sync`（仅 main 入口用，延迟 import）
-- Produces: `core/analyze.py` 导出 `analyze`/`analyze_with_validation`/`push_to_feishu`；`core/parser.py` 导出 `_parse_json`/`_extract_outermost_json`/`_bracket_completion_suffix`/`_dump_parse_failure`；`core/repair.py` 导出 `_repair_report`/`_add_usage`
+- Produces: `core/parser.py` 导出 `_parse_json`/`_extract_outermost_json`/`_bracket_completion_suffix`/`_dump_parse_failure`；`core/repair.py` 导出 `_repair_report`/`_add_usage`；`core/validator.py`/`render.py`/`history.py` 导出各自全部符号（与 stock_agent 原文件一致）
 
 - [ ] **Step 1: 建 core/ 目录 + __init__.py**
 
@@ -1055,58 +1056,7 @@ from .parser import _parse_json
 
 （`_repair_report` 函数体照搬；内部用 `_parse_json`、`os.environ`、`OpenAI`。）
 
-- [ ] **Step 4: 写 core/analyze.py（LLM 分析主流程）**
-
-从原 `analyze.py` 第 1-133 行（env 读取 + `FEISHU_WEBHOOK_URL` + `analyze`）+ 377-564 行（`analyze_with_validation` + `push_to_feishu` + `main`）搬。import 改为：
-
-```python
-"""股票投研 LLM 分析主流程 — 生成、语义校验、定点修正、飞书推送"""
-import asyncio
-import json
-import os
-import sys
-from datetime import datetime, timedelta
-from pathlib import Path
-
-# Windows 控制台 UTF-8 编码
-if sys.platform == "win32":
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
-# 将 backend 加入 path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-
-# 读取 .env（缺失时警告并继续，不能 exit —— 本模块会被 stock_api 导入复用 push_to_feishu）
-env_path = Path(__file__).resolve().parent.parent.parent / ".env"
-env_vars = {}
-if not env_path.exists():
-    print(f"⚠️ 未找到 .env 文件: {env_path}，LLM 分析与飞书推送将不可用", file=sys.stderr)
-else:
-    with open(env_path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            env_vars[key.strip()] = value.strip()
-
-os.environ.setdefault("DEEPSEEK_API_KEY", env_vars.get("DEEPSEEK_API_KEY", ""))
-FEISHU_WEBHOOK_URL = env_vars.get("FEISHU_STOCK_WEBHOOK_URL", "")
-
-from openai import OpenAI
-
-from stock_agent.models import DataIncompleteError  # noqa: F401
-from stock_agent.prompts import build_system_prompt, build_user_prompt
-from stock_agent.validator import (
-    validate_report, is_collapsed_report, StructuralCollapseError,
-)
-
-from .parser import _dump_parse_failure, _parse_json
-from .repair import _add_usage, _repair_report
-```
-
-（`analyze`/`analyze_with_validation`/`push_to_feishu`/`main` 函数体照搬；`analyze` 内用 `_dump_parse_failure`/`_parse_json`/`is_collapsed_report`/`StructuralCollapseError`，`analyze_with_validation` 用 `_add_usage`/`_repair_report`。）
-
-- [ ] **Step 5: 复制 validator.py / render.py / history.py 到 core/**
+- [ ] **Step 4: 复制 validator.py / render.py / history.py 到 core/**
 
 `cp backend/stock_agent/validator.py backend/stock_agent/core/validator.py`
 `cp backend/stock_agent/render.py backend/stock_agent/core/render.py`
@@ -1116,12 +1066,12 @@ from .repair import _add_usage, _repair_report
 
 > **注意**：core/validator.py 内部 `from stock_agent.prompts import OUTPUT_SCHEMA` 等相对原路径 import 不变（validator.py 本就 `from stock_agent.prompts import ...`）。core/render.py、core/history.py 同理。复制后需验证 `import stock_agent.core.validator` 不报错。
 
-- [ ] **Step 6: 跑测试验证（先验证 core 包可导入）**
+- [ ] **Step 5: 跑测试验证（先验证 core 包可导入）**
 
-Run: `cd backend && python -c "import sys; sys.path.insert(0,'.'); import stock_agent.core.analyze; import stock_agent.core.parser; import stock_agent.core.repair; import stock_agent.core.validator; import stock_agent.core.render; import stock_agent.core.history; print('core OK')"`
+Run: `cd backend && python -c "import sys; sys.path.insert(0,'.'); import stock_agent.core.parser; import stock_agent.core.repair; import stock_agent.core.validator; import stock_agent.core.render; import stock_agent.core.history; print('core OK')"`
 Expected: 打印 `core OK`
 
-- [ ] **Step 7: 全量测试 + 提交**
+- [ ] **Step 6: 全量测试 + 提交**
 
 Run: `cd backend && python -m pytest tests -q`
 Expected: 191 passed（原文件仍是真实现，故全量不受影响；core 是新增未接线）
@@ -1129,7 +1079,7 @@ Expected: 191 passed（原文件仍是真实现，故全量不受影响；core �
 ```bash
 cd d:/karensAgent
 git add backend/stock_agent/core/
-git commit -m "refactor(stock_agent): 新建 core 子包承载分析核心（parser/repair/analyze）"
+git commit -m "refactor(stock_agent): 新建 core 子包承载分析核心（parser/repair/validator/render/history）"
 ```
 
 ---
