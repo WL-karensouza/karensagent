@@ -60,3 +60,35 @@ class StockWatchlist(Base):
     __table_args__ = (
         {"comment": "自选股列表"},
     )
+
+
+class ChatSession(Base):
+    """AI 问答会话（绑定股票共享，每只股票一个活跃会话）"""
+    __tablename__ = "chat_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    stock_code = Column(String(20), nullable=False, unique=True, comment="股票代码")
+    stock_name = Column(String(64), default="", comment="股票名称")
+    report_id = Column(Integer, nullable=True, comment="最近锚定的报告 ID")
+    created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), comment="更新时间")
+
+    __table_args__ = (
+        {"comment": "AI 问答会话"},
+    )
+
+
+class ChatMessage(Base):
+    """AI 问答消息"""
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    session_id = Column(Integer, nullable=False, comment="所属会话 ID")
+    role = Column(String(16), nullable=False, comment="user / assistant")
+    content = Column(Text, nullable=False, comment="问题或回答")
+    tool_calls = Column(Text, nullable=True, comment="该轮工具调用记录 JSON 数组")
+    created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
+
+    __table_args__ = (
+        {"comment": "AI 问答消息"},
+    )
