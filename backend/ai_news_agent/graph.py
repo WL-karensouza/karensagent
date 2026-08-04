@@ -246,16 +246,23 @@ def summarize_node(state: AiNewsState) -> dict:
 
     search_results = state["search_results"]
     report_type = state["report_type"]
-    today_str = datetime.now().strftime("%Y年%m月%d日")
+    now = datetime.now()
+    today_str = now.strftime("%Y年%m月%d日")
+    # 昨天具体日期：供日报硬性过滤（Tavily 的 days=1 并不严格保证全是昨日新闻）
+    from datetime import timedelta
+    yesterday_str = (now - timedelta(days=1)).strftime("%Y年%m月%d日")
 
     # 搜索失败或无结果时直接返回
     if state.get("error") or search_results.startswith("未找到"):
         msg = state.get("error") or search_results
         return {"summary": f"⚠️ {msg}", "step": "completed"}
 
-    # 日报/周报共用同一个摘要 Prompt
+    # 日报/周报共用同一个摘要 Prompt，但栏目标签不同（昨日 / 近一周）
+    column_label = "昨日" if report_type == "daily" else "近一周"
     summarize_prompt = SUMMARIZE_PROMPT.format(
         today_str=today_str,
+        yesterday_str=yesterday_str,
+        column_label=column_label,
         search_results=search_results,
     )
 
