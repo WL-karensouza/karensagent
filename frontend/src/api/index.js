@@ -192,3 +192,56 @@ export function fetchInvestReport(stockCode, { onProgress, onComplete, onError }
 
   return controller
 }
+
+/* ═══════════════════════════════════════════
+ * AI 问答助理（karens）
+ * ═══════════════════════════════════════════ */
+export const getChatSession = (stockCode) =>
+  api.get(`/chat/session/${stockCode}`)
+
+export const getChatMessages = (stockCode, limit = 100) =>
+  api.get(`/chat/session/${stockCode}/messages`, { params: { limit } })
+
+/**
+ * SSE 问答：流式获取 karens 回答
+ * @param {string} stockCode
+ * @param {object} body  { question, report_id, stock_name }
+ * @param {object} callbacks { onThinking, onToolDone, onDelta, onDone, onError }
+ * @returns {AbortController}
+ */
+export function fetchChatAsk(stockCode, body, callbacks = {}) {
+  const controller = new AbortController()
+  fetch(`/api/chat/${stockCode}/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  }).then(async (res) => {
+    if (!res.ok) { callbacks.onError?.(new Error(`HTTP ${res.status}`)); return }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n\n')
+      buffer = parts.pop()
+      for (const part of parts) {
+        const line = part.trim()
+        if (!line.startsWith('data: ')) continue
+        try {
+          const data = JSON.parse(line.slice(6))
+          if (data.type === 'thinking') callbacks.onThinking?.(data)
+          else if (data.type === 'tool_done') callbacks.onToolDone?.(data)
+          else if (data.type === 'delta') callbacks.onDelta?.(data)
+          else if (data.type === 'done') callbacks.onDone?.(data)
+          else if (data.type === 'error') callbacks.onError?.(new Error(data.message || '未知错误'))
+        } catch (_) {}
+      }
+    }
+  }).catch(err => {
+    if (err.name !== 'AbortError') callbacks.onError?.(err)
+  })
+  return controller
+}

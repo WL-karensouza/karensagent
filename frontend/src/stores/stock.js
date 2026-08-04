@@ -38,6 +38,13 @@ export const useStockStore = defineStore('stock', {
     /* 评分趋势 */
     trendPoints: [],
 
+    /* AI 问答 */
+    chatMessages: [],       // [{ role, content, tool_calls }]
+    chatSession: null,      // { id, stock_code, ... }
+    chatAsking: false,      // 是否正在请求
+    chatThinking: false,    // 是否正在思考/查数
+    chatToolSteps: [],      // [{ id, label, status }] 工具步骤卡片
+
     /* Toast */
     toast: null,
   }),
@@ -402,6 +409,71 @@ export const useStockStore = defineStore('stock', {
       } catch (e) {
         this.showToast('推送失败: ' + (e.message || '网络错误'))
       }
+    },
+
+    /* ── AI 问答 ── */
+    async fetchChatSession(stockCode) {
+      try {
+        const res = await api.getChatSession(stockCode)
+        if (res.code === 0) {
+          this.chatSession = res.data.session
+          this.chatMessages = res.data.messages || []
+        }
+      } catch (e) { this.showToast('加载问答会话失败') }
+    },
+    async fetchChatMessages(stockCode) {
+      try {
+        const res = await api.getChatMessages(stockCode)
+        if (res.code === 0) this.chatMessages = res.data || []
+      } catch (_) {}
+    },
+
+    /**
+     * 发送问答（SSE 流式），内部管理 thinking/toolSteps/chatAsking 状态。
+     * 组件只调此 action，不直接 import api（符合项目惯例）。
+     * @returns {AbortController}
+     */
+    askChat(stockCode, { question, report_id, stock_name }) {
+      this.chatAsking = true
+      this.chatThinking = true
+      this.chatToolSteps = []
+      this.chatMessages.push({ role: 'user', content: question, tool_calls: null })
+
+      let stepId = 0
+      const controller = api.fetchChatAsk(stockCode, {
+        question, report_id, stock_name,
+      }, {
+        onThinking: () => { this.chatThinking = true },
+        onToolDone: (d) => {
+          this.chatThinking = false
+          stepId++
+          this.chatToolSteps.push({
+            id: stepId,
+            label: d.label || d.name,
+            status: d.ok ? 'done' : 'error',
+          })
+        },
+        onDelta: (d) => {
+          const last = this.chatMessages[this.chatMessages.length - 1]
+          if (last && last.role === 'assistant') last.content += d.text
+          else this.chatMessages.push({ role: 'assistant', content: d.text, tool_calls: null })
+        },
+        onDone: (d) => {
+          const last = this.chatMessages[this.chatMessages.length - 1]
+          if (last && last.role === 'assistant') last.content = d.full
+          else this.chatMessages.push({ role: 'assistant', content: d.full, tool_calls: null })
+          this.chatThinking = false
+          this.chatToolSteps = []
+          this.chatAsking = false
+        },
+        onError: (e) => {
+          this.showToast(e.message || '回答失败')
+          this.chatThinking = false
+          this.chatToolSteps = []
+          this.chatAsking = false
+        },
+      })
+      return controller
     },
   },
 })
