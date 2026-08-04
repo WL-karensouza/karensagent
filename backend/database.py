@@ -23,6 +23,10 @@ elif "mysql" in DATABASE_URL:
 engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+# 个股报告全局存量上限（滑动窗口容量）
+# 每存一份新报告，若存量超出该值，即删除最旧的报告，使窗口恒保持在最近 80 份
+STOCK_REPORT_MAX = 80
+
 
 class Base(DeclarativeBase):
     pass
@@ -64,6 +68,10 @@ def save_stock_report(stock_code: str, stock_name: str, report: dict,
     """保存个股分析报告，返回报告 ID
 
     debate_stats: 双模型辩论过程 JSON 串（标准分析/降级报告为 null，前端角标据此显示）
+
+    滑动窗口机制：全局报告存量按 STOCK_REPORT_MAX 封顶。
+    新报告写入 = 右指针前进；若存量超出上限，左指针滑出最旧报告并删除，
+    使窗口恒保持在最近 STOCK_REPORT_MAX 份。
     """
     import json
     from models import StockReport
@@ -84,9 +92,34 @@ def save_stock_report(stock_code: str, stock_name: str, report: dict,
         db.add(obj)
         db.commit()
         db.refresh(obj)
+
+        # ── 滑动窗口：存量超上限时，删除最旧报告，保持窗口恒 ≤ STOCK_REPORT_MAX ──
+        _trim_stock_reports(db)
+
         return obj.id
     finally:
         db.close()
+
+
+def _trim_stock_reports(db: Session) -> int:
+    """滑动窗口左指针：存量超上限时删除最旧报告，返回删除条数
+
+    报告按 id 递增即按时间递增（新报告 id 更大）；删除最旧的 =
+    按 id 升序删前 over 条，等价于窗口左边界右移。
+    """
+    from models import StockReport
+
+    total = db.query(StockReport).count()
+    over = total - STOCK_REPORT_MAX
+    if over <= 0:
+        return 0
+
+    # 取最旧的 over 条（id 升序），滑出窗口并删除
+    oldest = db.query(StockReport).order_by(StockReport.id.asc()).limit(over).all()
+    for row in oldest:
+        db.delete(row)
+    db.commit()
+    return len(oldest)
 
 
 def get_stock_report_by_id(report_id: int) -> dict | None:
