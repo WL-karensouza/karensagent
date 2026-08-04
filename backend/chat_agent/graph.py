@@ -45,8 +45,10 @@ def _understand(question: str, stock_code: str, stock_name: str) -> dict:
             extra_body={"thinking": {"type": "disabled"}},  # 意图分析求快
         )
         text = resp.choices[0].message.content or ""
-        # 剥离 ```json 包裹
-        if "```" in text:
+        # 剥离 ```json 包裹（先处理 ```json 再处理 ```，避免 json 前缀残留导致 loads 失败）
+        if "```json" in text:
+            text = text.split("```json", 1)[1].split("```", 1)[0]
+        elif "```" in text:
             text = text.split("```", 1)[1].split("```", 1)[0]
         data = json.loads(text.strip())
         return {
@@ -88,7 +90,23 @@ def _tool_loop(question: str, tool_hints: list[str]) -> tuple[list, list]:
         tool_calls = msg.tool_calls or []
         if not tool_calls:
             break
-        messages.append(msg)
+        # 不直接回填原始 msg 对象：思考模式下其 reasoning_content 会一并回传浪费 token（个别版本可能 400），
+        # 构造干净 dict 只保留 OpenAI 兼容的 role/content/tool_calls 字段
+        messages.append({
+            "role": "assistant",
+            "content": msg.content,
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": tc.type,
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in tool_calls
+            ],
+        })
         for tc in tool_calls:
             try:
                 args = json.loads(tc.function.arguments)
