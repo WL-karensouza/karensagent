@@ -37,13 +37,14 @@ def isolated_db(monkeypatch):
     return TestSession
 
 
-def test_slide_window_keeps_most_recent(isolated_db):
+def test_slide_window_keeps_most_recent(isolated_db, monkeypatch):
     """存量超上限时，删除最旧报告，窗口保持最近 MAX 份"""
     import database
     from database import save_stock_report
 
-    # 调低窗口容量为 3，方便构造超量场景
-    database.STOCK_REPORT_MAX = 3
+    # 调低窗口容量为 3，方便构造超量场景（monkeypatch 测试后自动还原，避免污染全局）
+    monkeypatch.setattr(database, "STOCK_REPORT_MAX", 3)
+    monkeypatch.setattr(database, "STOCK_REPORT_MIN_TRIM", 1)
 
     # 依次插入 5 条
     inserted = []
@@ -62,12 +63,13 @@ def test_slide_window_keeps_most_recent(isolated_db):
     assert remaining_ids == inserted[-3:], f"应保留最近 3 条 {inserted[-3:]}，实际 {remaining_ids}"
 
 
-def test_no_trim_when_under_limit(isolated_db):
+def test_no_trim_when_under_limit(isolated_db, monkeypatch):
     """未超上限时，报告全部保留，不误删"""
     import database
     from database import save_stock_report
 
-    database.STOCK_REPORT_MAX = 5
+    monkeypatch.setattr(database, "STOCK_REPORT_MAX", 5)
+    monkeypatch.setattr(database, "STOCK_REPORT_MIN_TRIM", 1)
 
     inserted = []
     for i in range(3):
@@ -84,12 +86,13 @@ def test_no_trim_when_under_limit(isolated_db):
     assert remaining_ids == inserted, f"应保留全部 {inserted}，实际 {remaining_ids}"
 
 
-def test_slide_window_exact_boundary(isolated_db):
+def test_slide_window_exact_boundary(isolated_db, monkeypatch):
     """存量恰好等于上限时，不触发删除"""
     import database
     from database import save_stock_report
 
-    database.STOCK_REPORT_MAX = 3
+    monkeypatch.setattr(database, "STOCK_REPORT_MAX", 3)
+    monkeypatch.setattr(database, "STOCK_REPORT_MIN_TRIM", 1)
 
     inserted = []
     for i in range(3):
@@ -104,12 +107,13 @@ def test_slide_window_exact_boundary(isolated_db):
     assert total == 3, f"恰好等于上限应不删，实际 {total}"
 
 
-def test_trim_exactly_over_by_one(isolated_db):
+def test_trim_exactly_over_by_one(isolated_db, monkeypatch):
     """存量 4、上限 3：只删最旧 1 条，窗口回到 3"""
     import database
     from database import save_stock_report
 
-    database.STOCK_REPORT_MAX = 3
+    monkeypatch.setattr(database, "STOCK_REPORT_MAX", 3)
+    monkeypatch.setattr(database, "STOCK_REPORT_MIN_TRIM", 1)
 
     inserted = []
     for i in range(4):

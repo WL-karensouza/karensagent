@@ -27,6 +27,10 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 # 每存一份新报告，若存量超出该值，即删除最旧的报告，使窗口恒保持在最近 80 份
 STOCK_REPORT_MAX = 80
 
+# 滑动窗口防御保护下限：STOCK_REPORT_MAX 若被污染成低于此值（如测试残留的小值），
+# 视为配置损坏，跳过删除防止误删真实数据
+STOCK_REPORT_MIN_TRIM = 10
+
 
 class Base(DeclarativeBase):
     pass
@@ -106,8 +110,15 @@ def _trim_stock_reports(db: Session) -> int:
 
     报告按 id 递增即按时间递增（新报告 id 更大）；删除最旧的 =
     按 id 升序删前 over 条，等价于窗口左边界右移。
+
+    防御保护：若 STOCK_REPORT_MAX 被污染成异常小值（< 10），
+    视为配置损坏，跳过删除，防止误删真实数据。
     """
     from models import StockReport
+
+    if STOCK_REPORT_MAX < STOCK_REPORT_MIN_TRIM:
+        print(f"[database] ⚠️ STOCK_REPORT_MAX={STOCK_REPORT_MAX} 低于下限 {STOCK_REPORT_MIN_TRIM}，跳过滑动窗口删除")
+        return 0
 
     total = db.query(StockReport).count()
     over = total - STOCK_REPORT_MAX

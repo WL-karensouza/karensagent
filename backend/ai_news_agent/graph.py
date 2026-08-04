@@ -208,11 +208,16 @@ def _extract_text(response) -> str:
     """从 anthropic messages.create 响应中提取纯文本
 
     思考模式开启时 content 里混有 thinking / text 两种 block，只取 text 类型。
+    兼容 block 为对象（真实 anthropic SDK）或 dict（测试 mock）两种形态。
     """
     parts = []
     for block in getattr(response, "content", []) or []:
-        if getattr(block, "type", "") == "text":
-            parts.append(getattr(block, "text", "") or "")
+        if isinstance(block, dict):
+            if block.get("type") == "text":
+                parts.append(block.get("text", "") or "")
+        else:
+            if getattr(block, "type", "") == "text":
+                parts.append(getattr(block, "text", "") or "")
     return "\n".join(parts)
 
 

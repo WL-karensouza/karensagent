@@ -17,6 +17,22 @@ if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_capture(capfd):
+    """禁用 stdout/stderr 捕获（fastapi TestClient + httpx 后台线程兼容）
+
+    TestClient 的 lifespan 会启动后台线程（如 ai_news 调度器），这些线程
+    在 pytest 关闭捕获后仍写 stdout，触发 "I/O operation on closed file"。
+    本文件是唯一使用 TestClient 的测试，因此仅在此处禁用捕获；
+    capfd 与该文件内测试的 capsys 不冲突（无测试同时用两者）。
+    """
+    with capfd.disabled():
+        yield
+
+
 # ═══════════════════════════════════════════════
 # 模型层测试
 # ═══════════════════════════════════════════════
@@ -188,11 +204,15 @@ def test_duplicate_watchlist_rejected():
 
 def test_analyze_endpoint_returns_task_id():
     """POST /api/stock/analyze 应返回 task_id（不阻塞等待 LLM）"""
+    from unittest.mock import patch
     from fastapi.testclient import TestClient
     from main import app
 
-    client = TestClient(app)
-    resp = client.post("/api/stock/analyze", json={"stock_code": "600398"})
+    # 关键：patch _run_analysis，避免后台线程真实执行 SKILL 取数 + DeepSeek 分析
+    # （否则测试结束 pytest 关闭捕获，后台线程写 stderr 触发 tempfile 错误，且污染测试库）
+    with patch("routers.stock_api._run_analysis"):
+        client = TestClient(app)
+        resp = client.post("/api/stock/analyze", json={"stock_code": "600398"})
     assert resp.status_code == 200, f"HTTP 状态码应为 200，实际 {resp.status_code}"
     data = resp.json()
     assert data["code"] == 0, f"code 应为 0，实际 {data}"
@@ -287,11 +307,14 @@ def test_watchlist_crud_flow():
 
 def test_market_report_trigger_returns_task_id():
     """POST /api/stock/trigger/market-report 应返回 task_id"""
+    from unittest.mock import patch
     from fastapi.testclient import TestClient
     from main import app
 
-    client = TestClient(app)
-    resp = client.post("/api/stock/trigger/market-report")
+    # patch 后台分析，避免真实执行自选股分析（网络请求 + LLM）
+    with patch("routers.stock_api._run_watchlist_analyze"):
+        client = TestClient(app)
+        resp = client.post("/api/stock/trigger/market-report")
     assert resp.status_code == 200
     data = resp.json()
     assert data["code"] == 0, f"code 应为 0，实际 {data}"
@@ -305,14 +328,17 @@ def test_market_report_trigger_returns_task_id():
 
 def test_push_report_endpoint_accepts_valid_id():
     """POST /api/stock/reports/{id}/push 应对有效 ID 返回合理响应"""
+    from unittest.mock import patch
     from database import save_stock_report
     from fastapi.testclient import TestClient
     from main import app
 
     report_id = save_stock_report("600398", "海澜之家", {"score": 72}, "# 测试推送报告", 100)
 
-    client = TestClient(app)
-    resp = client.post(f"/api/stock/reports/{report_id}/push")
+    # patch 飞书推送，避免真实网络请求
+    with patch("stock_agent.analyze.push_to_feishu", return_value=True):
+        client = TestClient(app)
+        resp = client.post(f"/api/stock/reports/{report_id}/push")
     assert resp.status_code == 200, f"HTTP 应为 200，实际 {resp.status_code}"
     data = resp.json()
     assert "code" in data, "响应应包含 code"

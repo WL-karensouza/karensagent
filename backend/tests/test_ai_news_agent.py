@@ -112,14 +112,16 @@ class TestUnderstandQueryNode:
         """解析标准格式的 LLM 响应：理解/时效/搜索词"""
         from ai_news_agent.graph import understand_query_node
 
-        # 模拟 LLM 返回的标准格式响应
+        # 模拟 LLM 返回的标准格式响应（anthropic 协议：content 为 text block 列表）
         mock_response = (
             "理解：用户想要搜索过去24小时内AI领域的重要新闻进展\n"
             "时效：1\n"
             "搜索词：AI artificial intelligence breakthroughs July 2026"
         )
         mock_llm = MagicMock()
-        mock_llm.invoke.return_value.content = mock_response
+        mock_llm.messages.create.return_value.content = [
+            {"type": "text", "text": mock_response}
+        ]
 
         # 构建测试 state
         state = {
@@ -150,7 +152,9 @@ class TestUnderstandQueryNode:
             "搜索词：AI industry major news trends July 20-27 2026"
         )
         mock_llm = MagicMock()
-        mock_llm.invoke.return_value.content = mock_response
+        mock_llm.messages.create.return_value.content = [
+            {"type": "text", "text": mock_response}
+        ]
 
         state = {
             "search_intent": "搜索过去一周AI新闻",
@@ -178,7 +182,9 @@ class TestUnderstandQueryNode:
             "搜索关键词：latest AI news today July 2026"
         )
         mock_llm = MagicMock()
-        mock_llm.invoke.return_value.content = mock_response
+        mock_llm.messages.create.return_value.content = [
+            {"type": "text", "text": mock_response}
+        ]
 
         state = {
             "search_intent": "搜索AI新闻",
@@ -200,7 +206,7 @@ class TestUnderstandQueryNode:
         from ai_news_agent.graph import understand_query_node
 
         mock_llm = MagicMock()
-        mock_llm.invoke.side_effect = Exception("API 调用失败")
+        mock_llm.messages.create.side_effect = Exception("API 调用失败")
 
         state = {
             "search_intent": "搜索过去24小时AI新闻",
