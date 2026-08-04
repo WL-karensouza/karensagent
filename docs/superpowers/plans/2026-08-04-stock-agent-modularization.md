@@ -1146,48 +1146,11 @@ git commit -m "refactor(stock_agent): 新建 core 子包承载分析核心（par
 - Consumes: Task 4 的 `core/` 包
 - Produces: 保持 `stock_agent.analyze`/`render`/`validator`/`history` 模块存在，符号经 re-export 指向 core
 
-- [ ] **Step 1: 改写 stock_agent/analyze.py 为 facade**
+- [ ] **Step 1（唯一方案）：analyze.py 保留真实现，只把 parser/repair 委派到 core**
 
-```python
-"""股票投研 LLM 分析 — 兼容门面
+> **为什么不能整文件搬成 facade**：`test_analyze.py` 用 `patch('stock_agent.analyze.OpenAI')` 替换 analyze 模块的 `OpenAI` 属性。若 `analyze()` 主体搬进 core，mock 就够不到真调用处 → 测试失败。**故 analyze.py 保留 `analyze`/`analyze_with_validation`/`push_to_feishu`/`main` 主体**（`OpenAI` 属性仍在 analyze 模块，monkeypatch 有效），仅把 6 个解析/修复函数迁到 core/parser、core/repair 并从 core re-export。
 
-真实现已迁入 stock_agent.core（analyze/parser/repair）。本文件保留原路径
-供 `from stock_agent.analyze import X` 与 `patch('stock_agent.analyze.OpenAI')`
-等 monkeypatch 路径继续解析（测试与路由依赖此模块存在的约定）。
-"""
-from openai import OpenAI  # noqa: F401 — monkeypatch 目标（patch('stock_agent.analyze.OpenAI')）
-
-from stock_agent.core.analyze import (  # noqa: F401
-    analyze,
-    analyze_with_validation,
-    push_to_feishu,
-    main,
-)
-from stock_agent.core.parser import (  # noqa: F401
-    _parse_json,
-    _extract_outermost_json,
-    _bracket_completion_suffix,
-    _dump_parse_failure,
-)
-from stock_agent.core.repair import (  # noqa: F401
-    _repair_report,
-    _add_usage,
-)
-
-# 兼容：原 analyze.py 曾 re-export render_markdown（# noqa: F401 保持向后兼容）
-from stock_agent.render import render_markdown  # noqa: F401
-
-# 兼容：原 analyze.py 顶层导出的常量（部分调用方可能引用）
-from stock_agent.core.analyze import FEISHU_WEBHOOK_URL  # noqa: F401
-```
-
-> **注意**：`test_analyze.py` 有 `patch('stock_agent.analyze.OpenAI')`，mock 后 `analyze()` 内 `OpenAI(api_key=..., base_url=...)` 被替换。由于 `core/analyze.py` 内部 `from openai import OpenAI`，其 `OpenAI` 是 `core.analyze` 模块属性；而 facade 的 `OpenAI` 是独立 import。**两个 `OpenAI` 名称不同模块属性**，故 `patch('stock_agent.analyze.OpenAI')` 只替换 facade 的 `OpenAI`，不会替换 `core.analyze.OpenAI` → `analyze()` 里仍用真 OpenAI。**此问题会导致测试失败**。
-
-**解决**：core/analyze.py 改用 `import openai` 后由 facade 注入，或让 facade 直接持有真逻辑。**最简方案**：`core/analyze.py` 内部 `from openai import OpenAI` 保持不变，但 facade 的 `analyze` 函数也要能 patch 到 `OpenAI`。**因此 Task 5 Step 1 需改为：facade 不 re-export core.analyze，而是保持 analyze.py 为真实现主文件，仅把 parser/repair 拆到 core/parser、core/repair 并 re-export。** 见下方 Step 1b 修订。
-
-- [ ] **Step 1b（修订）：analyze.py 保留真实现，只把 parser/repair 委派到 core**
-
-为满足 `patch('stock_agent.analyze.OpenAI')`（测试 mock 的是 analyze 模块的 `OpenAI`），`analyze.py` 不能把 `analyze` 主体搬到 core——否则 mock 失效。**正确做法**：`analyze.py` 仍是主实现，仅把 `_parse_json`/`_extract_outermost_json`/`_bracket_completion_suffix`/`_dump_parse_failure`/`_repair_report`/`_add_usage` 这 6 个解析/修复函数迁到 core，analyze.py 从 core re-export 它们：
+`analyze.py` 改写后结构（保留原 env 读取、`FEISHU_WEBHOOK_URL`、import 头，仅顶部加 core re-export 行）：
 
 ```python
 import asyncio
