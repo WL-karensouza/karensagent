@@ -65,12 +65,14 @@ from ai_news_agent.routers.history import router as history_router
 from ai_news_agent.routers.trigger import router as trigger_router
 from routers.config_api import router as config_router
 from routers.stock_api import router as stock_router
+from chat_agent.routers.chat import router as chat_router
 
 app.include_router(dashboard_router)
 app.include_router(history_router)
 app.include_router(trigger_router)
 app.include_router(config_router)
 app.include_router(stock_router)
+app.include_router(chat_router)
 
 
 # ── 根路径 ──

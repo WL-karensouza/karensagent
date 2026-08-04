@@ -1,0 +1,120 @@
+"""投研 AI 问答 —— FastAPI 路由"""
+import asyncio
+import json
+
+from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+
+from database import get_stock_report_by_id
+from ..database import (
+    get_or_create_session, update_session_report, add_message, list_messages,
+)
+from ..graph import run_qa_agent
+from ..tools import TOOL_FRIENDLY_NAMES
+
+router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+class AskRequest(BaseModel):
+    question: str
+    report_id: int | None = None   # 可选，用于锚定会话
+    stock_name: str = ""
+
+
+def _sse(data: dict) -> str:
+    return f"data: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@router.get("/session/{stock_code}")
+def get_chat_session(stock_code: str):
+    """获取会话 + 历史消息"""
+    session = get_or_create_session(stock_code)
+    messages = list_messages(session["id"])
+    return {"code": 0, "data": {"session": session, "messages": messages}}
+
+
+@router.get("/session/{stock_code}/messages")
+def get_chat_messages(stock_code: str, limit: int = 100):
+    """分页拉历史消息"""
+    session = get_or_create_session(stock_code)
+    messages = list_messages(session["id"], limit=limit)
+    return {"code": 0, "data": messages}
+
+
+@router.post("/{stock_code}/ask")
+async def ask(stock_code: str, req: AskRequest):
+    """SSE 流式提问"""
+    session = get_or_create_session(stock_code, req.stock_name)
+
+    # 锚定报告（可选）
+    if req.report_id:
+        update_session_report(session["id"], req.report_id)
+
+    # 构建报告上下文（固定锚点：取最新报告结论摘要）
+    report_context = _build_report_context(req.report_id, stock_code)
+
+    # 记录用户消息
+    add_message(session["id"], "user", req.question)
+
+    async def gen():
+        yield _sse({"type": "thinking"})
+        # 后台线程执行问答（含工具调用），完成后流式输出
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: run_qa_agent(
+                req.question, stock_code, req.stock_name or session["stock_name"],
+                report_context, [],
+            ),
+        )
+
+        # 工具调用事件（前端步骤卡片）
+        for tc in result["tool_calls"]:
+            yield _sse({"type": "tool_done", "name": tc["name"],
+                        "label": tc.get("label", tc["name"]), "ok": tc["ok"]})
+
+        # 回答增量（简单按句切分模拟流式；后续可换真 token 流）
+        answer = result["answer"]
+        for chunk in _chunk_text(answer):
+            yield _sse({"type": "delta", "text": chunk})
+            await asyncio.sleep(0.02)
+
+        yield _sse({"type": "done", "full": answer})
+
+        # 记录助手消息
+        add_message(session["id"], "assistant", answer, result["tool_calls"] or None)
+
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _build_report_context(report_id: int | None, stock_code: str) -> str:
+    """构建注入报告上下文：优先指定报告，否则取该股最新报告"""
+    row = None
+    if report_id:
+        row = get_stock_report_by_id(report_id)
+    if row is None:
+        from database import get_latest_report
+        row = get_latest_report(stock_code)
+    if row is None:
+        return "（暂无报告）"
+    # 提取报告结论摘要：summary 字段 + 评分/判断
+    parts = [f"评分：{row.get('score', '')}", f"判断：{row.get('decision', '')}"]
+    if row.get("summary"):
+        parts.append(f"摘要：{row['summary']}")
+    return "\n".join(parts)
+
+
+def _chunk_text(text: str, size: int = 6) -> list[str]:
+    """把回答切成小块（近似流式；中文字符按 6 字一块）"""
+    if not text:
+        return []
+    return [text[i:i + size] for i in range(0, len(text), size)]
