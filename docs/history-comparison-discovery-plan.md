@@ -217,3 +217,14 @@
 4. `frontend/src/views/agent/StockReport.vue`：score-card 右侧嵌入 ScoreTrendChart；报告加载后以 `stock_code` 调 fetchTrend；不破坏现有两列 layout
 5. `frontend/src/components/report/HoldingAdviceCard.vue`：module_9 顶部——`history_changes` 非空 → 标题「历史对比（基准：{history_anchor} 报告）」+ 条目列表，其下才建仓/止损/止盈；否则 `history_compared` 为 true → 浅色小字「与 {history_anchor} 报告对比无重大变化」；均无 → 不渲染
 6. 验证：`npm run build` 通过；`npm test` 既有测试通过；风格与现有浅色简约一致
+
+---
+
+## 九、挂账事项（合并后跟进，终评裁决不阻塞）
+
+1. `backend/tests/test_stock_api.py` 约 406-407 行重复 print 一行（下次动该文件顺手删）
+2. `ScoreTrendChart.vue` 折线/网格色硬编码（数值恰与全局 `--accent` 同值；canvas 引 CSS 变量需 getComputedStyle 中转，收益低于成本）
+3. `ScoreTrendChart.vue` watch 缺 `immediate:true` + `fetchTrend` 起手不清旧 trendPoints → 跨报告导航瞬时闪空态（2 行可补）
+4. `created_at` 空格分隔格式在 Safari 下 `new Date()` 解析失败（dogfooding 以 Chromium 为主，低优先）
+5. 知会：trend 受 `get_recent_reports` 默认 limit=9 约束，高频股趋势图最多 9 点
+6. 知会：N=0 时若 LLM 幻觉出历史字段无机械拦截（低概率，validator 仅在有历史时校验）
