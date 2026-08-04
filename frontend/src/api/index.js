@@ -70,6 +70,10 @@ export const triggerWatchlistAnalyze = () =>
 export const pushStockReport = (id) =>
   api.post(`/stock/reports/${id}/push`)
 
+/* 评分趋势：按股票代码返回历史评分序列 */
+export const getStockTrend = (stockCode) =>
+  api.get(`/stock/reports/trend/${stockCode}`)
+
 /* ═══════════════════════════════════════════
  * SKILL 驱动的 SSE 报告（新架构）
  * ═══════════════════════════════════════════ */

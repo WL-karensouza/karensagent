@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useStockStore } from '../../stores/stock.js'
 import { verdictColor } from '../../utils/stock.js'
 import ScoreGauge from '../../components/report/ScoreGauge.vue'
+import ScoreTrendChart from '../../components/report/ScoreTrendChart.vue'
 import DecisionBadge from '../../components/report/DecisionBadge.vue'
 import Module1CoreConclusion from '../../components/report/Module1CoreConclusion.vue'
 import Module2CompanyProfile from '../../components/report/Module2CompanyProfile.vue'
@@ -33,6 +34,9 @@ onMounted(() => {
   }
   store.fetchReportDetail(id).finally(() => {
     mounted.value = true
+    /* 报告加载完成后拉取历史评分趋势 */
+    const code = store.currentReport?.stock_code
+    if (code) store.fetchTrend(code)
   })
 })
 
@@ -104,6 +108,8 @@ async function handlePush() {
               </p>
               <button class="btn-search" @click="handlePush">📤 推送飞书</button>
             </div>
+            <!-- 评分历史趋势图：利用 score-card 右侧空白 -->
+            <ScoreTrendChart :points="store.trendPoints" />
           </div>
 
           <!-- ===== 模块1：核心结论与操作建议 ===== -->

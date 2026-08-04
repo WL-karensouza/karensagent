@@ -35,6 +35,9 @@ export const useStockStore = defineStore('stock', {
     reportLoading: false,
     reportError: null,
 
+    /* 评分趋势 */
+    trendPoints: [],
+
     /* Toast */
     toast: null,
   }),
@@ -272,6 +275,20 @@ export const useStockStore = defineStore('stock', {
         this.showToast(this.reportError)
       } finally {
         this.reportLoading = false
+      }
+    },
+
+    /* 获取评分趋势数据（历史对比） */
+    async fetchTrend(code) {
+      try {
+        const res = await api.getStockTrend(code)
+        if (res.code === 0 && Array.isArray(res.data)) {
+          this.trendPoints = res.data
+        } else {
+          this.trendPoints = []
+        }
+      } catch (e) {
+        this.trendPoints = []
       }
     },
 

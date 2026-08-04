@@ -9,6 +9,21 @@ defineProps({
   <div v-if="data && Object.keys(data).length" class="m9-block">
     <h2 class="m9-title">🎯 散户实战操作指南</h2>
 
+    <!-- 历史对比块：有变动 → 标题 + 条目列表 -->
+    <div v-if="data.history_changes && data.history_changes.length" class="m9-history">
+      <div class="m9-history-title">
+        历史对比（基准：{{ data.history_anchor || '上期' }} 报告）
+      </div>
+      <ul class="m9-history-list">
+        <li v-for="(item, i) in data.history_changes" :key="i">{{ item }}</li>
+      </ul>
+    </div>
+
+    <!-- 历史对比块：无重大变化 -->
+    <div v-else-if="data.history_compared" class="m9-history-nochange">
+      与 {{ data.history_anchor || '上期' }} 报告对比无重大变化
+    </div>
+
     <div class="m9-cols">
       <!-- 建仓策略 -->
       <div v-if="data.buy_strategy" class="m9-col buy">
@@ -47,6 +62,40 @@ defineProps({
 </template>
 
 <style scoped>
+/* 历史对比块：有变动 → 暖色底强调 */
+.m9-history {
+  padding: 14px 18px;
+  background: #FEF3C7;
+  border: 1px solid #FDE68A;
+  border-radius: var(--radius-md);
+  margin-bottom: 14px;
+}
+.m9-history-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #92400E;
+  margin-bottom: 8px;
+}
+.m9-history-list {
+  margin: 0;
+  padding-left: 20px;
+  list-style: disc;
+}
+.m9-history-list li {
+  font-size: 0.82rem;
+  color: #78350F;
+  line-height: 1.7;
+  margin-bottom: 4px;
+}
+
+/* 历史对比块：无重大变化 → 浅色小字 */
+.m9-history-nochange {
+  font-size: 0.78rem;
+  color: var(--text-muted, #A8A29E);
+  margin-bottom: 12px;
+  padding: 0 2px;
+}
+
 /* 操作指南区块 */
 .m9-block {
   padding: 22px 24px;
