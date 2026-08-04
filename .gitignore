@@ -26,3 +26,6 @@ dist/
 .DS_Store
 # Added by code-review-graph
 .code-review-graph/
+
+# subagent-driven-development 技能暂存区（ledger/brief/report）
+.superpowers/
