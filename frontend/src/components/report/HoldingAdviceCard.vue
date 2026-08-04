@@ -62,12 +62,9 @@ defineProps({
 </template>
 
 <style scoped>
-/* 历史对比块：有变动 → 暖色底强调 */
+/* 历史对比块：有变动 → 无背景无边框，仅留暖色文字 */
 .m9-history {
   padding: 14px 18px;
-  background: #FEF3C7;
-  border: 1px solid #FDE68A;
-  border-radius: var(--radius-md);
   margin-bottom: 14px;
 }
 .m9-history-title {
