@@ -10,8 +10,7 @@
 from typing import TypedDict
 from datetime import datetime
 
-from langchain_core.messages import SystemMessage
-from langchain_openai import ChatOpenAI
+from anthropic import Anthropic
 from langgraph.graph import StateGraph, START, END
 from tavily import TavilyClient
 
@@ -47,19 +46,17 @@ _llm = None
 _tavily = None
 
 
-def _get_llm() -> ChatOpenAI:
-    """获取 LLM 客户端（单例）"""
+def _get_llm() -> Anthropic:
+    """获取 LLM 客户端（单例）
+
+    使用原生 anthropic SDK + DeepSeek 的 Anthropic 兼容端点
+    （LLM_BASE_URL=https://api.deepseek.com/anthropic）。
+    deepseek-v4-flash 默认开启思考模式，思考模式下 temperature 等采样参数不生效；
+    新闻摘要求快速确定性输出，此处显式关闭思考，让 temperature=0.3 生效。
+    """
     global _llm
     if _llm is None:
-        # deepseek-v4-flash 默认开启思考模式，思考模式下 temperature 等采样参数不生效；
-        # 新闻摘要求快速确定性输出，此处显式关闭思考，让 temperature=0.3 生效。
-        _llm = ChatOpenAI(
-            model=LLM_MODEL_ID,
-            api_key=LLM_API_KEY,
-            base_url=LLM_BASE_URL,
-            temperature=0.3,
-            model_kwargs={"thinking": {"type": "disabled"}},
-        )
+        _llm = Anthropic(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
     return _llm
 
 
@@ -99,8 +96,13 @@ def understand_query_node(state: AiNewsState) -> dict:
     try:
         llm = _get_llm()
         print(f"[ai_news] 🧠 分析搜索意图: {search_intent[:60]}...")
-        response = llm.invoke([SystemMessage(content=understand_prompt)])
-        response_text = response.content
+        response = llm.messages.create(
+            model=LLM_MODEL_ID,
+            max_tokens=200,
+            thinking={"type": "disabled"},  # 意图分析求快，关思考
+            messages=[{"role": "user", "content": understand_prompt}],
+        )
+        response_text = _extract_text(response)
 
         # 解析搜索关键词
         search_query = search_intent  # 默认使用意图原文
@@ -154,7 +156,7 @@ def tavily_search_node(state: AiNewsState) -> dict:
         search_kwargs = {
             "query": search_query,
             "search_depth": "advanced",
-            "include_answer": True,
+            "include_answer": False,   # 关闭 Tavily 自带 AI 答案，避免把它的总结性话术带进摘要
             "include_raw_content": False,
             "max_results": max_results,
         }
@@ -164,10 +166,8 @@ def tavily_search_node(state: AiNewsState) -> dict:
         print(f"[ai_news] 🔍 Tavily 搜索: {search_query[:80]}... (days={search_days})")
         response = client.search(**search_kwargs)
 
-        # 格式化搜索结果
+        # 格式化搜索结果（不注入 Tavily 的 answer 段落，只取原始条目）
         search_results = ""
-        if response.get("answer"):
-            search_results = f"综合答案：\n{response['answer']}\n\n"
 
         if response.get("results"):
             search_results += "详细信息：\n"
@@ -204,6 +204,43 @@ def tavily_search_node(state: AiNewsState) -> dict:
 # Node 3: LLM 摘要
 # ═══════════════════════════════════════════
 
+def _extract_text(response) -> str:
+    """从 anthropic messages.create 响应中提取纯文本
+
+    思考模式开启时 content 里混有 thinking / text 两种 block，只取 text 类型。
+    """
+    parts = []
+    for block in getattr(response, "content", []) or []:
+        if getattr(block, "type", "") == "text":
+            parts.append(getattr(block, "text", "") or "")
+    return "\n".join(parts)
+
+
+def _invoke_summary_with_retry(llm, summarize_prompt: str, retries: int = 1) -> str:
+    """调用 LLM 生成摘要，失败自动重试指定次数
+
+    LLM 偶发超时/限流时自动重试一次，避免直接落入失败提示。
+    """
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            response = llm.messages.create(
+                model=LLM_MODEL_ID,
+                max_tokens=3000,  # 摘要可能较长，预留充足空间
+                thinking={"type": "disabled"},  # 摘要求确定性，关思考
+                messages=[{"role": "user", "content": summarize_prompt}],
+            )
+            text = _extract_text(response)
+            if text.strip():
+                return text
+            raise RuntimeError("摘要响应为空")
+        except Exception as e:
+            last_exc = e
+            if attempt < retries:
+                print(f"[ai_news] ⚠️ 摘要失败，重试 {attempt + 1}/{retries}: {e}")
+    raise last_exc
+
+
 def summarize_node(state: AiNewsState) -> dict:
     """调用 LLM 将搜索结果整理为中文摘要"""
 
@@ -225,17 +262,15 @@ def summarize_node(state: AiNewsState) -> dict:
     try:
         llm = _get_llm()
         print(f"[ai_news] 🤖 LLM 摘要中... (type={report_type})")
-        response = llm.invoke(summarize_prompt)
-        summary = response.content
+        summary = _invoke_summary_with_retry(llm, summarize_prompt)
         print(f"[ai_news] ✅ 摘要完成，{len(summary)} 字符")
         return {"summary": summary, "step": "completed"}
     except Exception as e:
         error_msg = f"LLM 摘要失败: {str(e)}"
         print(f"[ai_news] ❌ {error_msg}")
-        # 飞书卡片限制 100KB，原始搜索结果可能过大，截断到 2000 字
-        truncated = search_results[:2000] + "..." if len(search_results) > 2000 else search_results
+        # 摘要失败不回退原始搜索垃圾：宁可少推，不推脏数据
         return {
-            "summary": f"⚠️ LLM 摘要生成失败，以下为部分原始搜索结果：\n\n{truncated}",
+            "summary": f"⚠️ 今日{report_type} AI 新闻摘要生成失败，请稍后重试。",
             "step": "completed",
         }
 
