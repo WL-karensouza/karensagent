@@ -49,11 +49,11 @@ def test_get_name_tencent_sz_and_hk_prefix():
 
 def test_resolve_summary_query_tencent_fallback():
     """东财失败 → 腾讯兜底查简称 → summary query 用简称"""
-    from stock_agent.skill import report as rp
+    from stock_agent.skill import collect as collect_mod
 
-    with patch.object(rp, "_get_name_eastmoney", return_value=None), \
-         patch.object(rp, "_get_name_tencent", return_value="贵州茅台"):
-        q = rp._resolve_summary_query("600519")
+    with patch.object(collect_mod, "_get_name_eastmoney", return_value=None), \
+         patch.object(collect_mod, "_get_name_tencent", return_value="贵州茅台"):
+        q = collect_mod._resolve_summary_query("600519")
 
     assert q.startswith("贵州茅台"), f"东财失败时应用腾讯简称，实际: {q[:30]}"
     print("[OK] 东财失败腾讯兜底")

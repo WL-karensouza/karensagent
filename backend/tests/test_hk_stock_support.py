@@ -53,14 +53,20 @@ PROFILE_ANSWER_2513 = (
 
 
 def _patch_report(fake_call):
-    """替换 report 模块的 call_skill 外部边界并取消限速，返回恢复函数"""
+    """替换采集模块的 call_skill 外部边界并取消限速，返回恢复函数
+
+    拆分后 call_skill 由 collect.py 持有、RATE_LIMIT_INTERVAL 由 report.py 门面持有，
+    故两个挂载点分别 patch（collect_mod.call_skill + report_mod.RATE_LIMIT_INTERVAL）。
+    """
+    import stock_agent.skill.collect as collect_mod
     import stock_agent.skill.report as report_mod
 
-    old_call, old_interval = report_mod.call_skill, report_mod.RATE_LIMIT_INTERVAL
-    report_mod.call_skill, report_mod.RATE_LIMIT_INTERVAL = fake_call, 0
+    old_call = collect_mod.call_skill
+    old_interval = report_mod.RATE_LIMIT_INTERVAL
+    collect_mod.call_skill, report_mod.RATE_LIMIT_INTERVAL = fake_call, 0
 
     def restore():
-        report_mod.call_skill, report_mod.RATE_LIMIT_INTERVAL = old_call, old_interval
+        collect_mod.call_skill, report_mod.RATE_LIMIT_INTERVAL = old_call, old_interval
 
     return restore
 
