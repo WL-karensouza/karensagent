@@ -118,25 +118,23 @@ backend/stock_agent/
 
 ## 5. import 兼容策略
 
-### 5.1 外部消费者（零改动）
+### 5.1 外部消费者（零改动）— 原路径 facade 方案
 
-所有现存外部引用路径保持不变，靠目标模块 `__init__.py` re-export 承接：
+**关键约束**：`from stock_agent.analyze import analyze`、`patch('stock_agent.analyze.OpenAI')`、`patch("stock_agent.analyze.push_to_feishu")` 共 50+ 处（含 monkeypatch 字符串路径）依赖 `stock_agent.analyze` 作为**模块存在且持有 `OpenAI`/`push_to_feishu` 属性**。若直接删除原文件，所有这些测试与路由的 monkeypatch 目标会失效。
 
-| 外部引用 | 承接模块 |
-|---|---|
-| `from stock_agent.analyze import analyze/analyze_with_validation/push_to_feishu/_parse_json/_repair_report/...` | `stock_agent/__init__.py` re-export 自 core 包 |
-| `from stock_agent.render import render_markdown` | `stock_agent/__init__.py` re-export 自 core/render |
-| `from stock_agent.validator import validate_report/...` | `stock_agent/__init__.py` re-export 自 core/validator |
-| `from stock_agent.history import ...` | `stock_agent/__init__.py` re-export 自 core/history |
-| `from stock_agent.skill.report import generate_report_sync/...` | `skill/report.py`（门面） |
-| `from stock_agent.skill import call_skill/extract_text/extract_raw` | `skill/__init__.py` re-export |
-| `from stock_agent.skill.indicators import _calc_*` | `skill/indicators.py`（原样） |
-| `from stock_agent.skill import report as rp` | `skill/report.py`（门面） |
-| `from stock_agent.datasources.eastmoney import ...` | `datasources/eastmoney.py`（原样） |
-| `from stock_agent.models import ...` | `models/__init__.py` re-export |
-| `from stock_agent.prompts import ...` | `prompts/__init__.py`（原样） |
+因此采用 **facade 方案**：真实现搬迁进 `core/` 子包，原路径文件改为薄 re-export 兼容层，确保模块路径与符号位置不变。
 
-> **注意**：`analyze.py` 原有的 `from stock_agent.render import render_markdown  # noqa: F401 — 保持向后兼容` 一行，拆分后 render 移入 core，该 re-export 需在 `stock_agent/__init__.py` 或保留在 core/analyze.py 中补回，确保 `from stock_agent.analyze import render_markdown` 仍可用（若有代码依赖此兼容路径）。
+| 原路径 | 变更为 | 真实现位置 |
+|---|---|---|
+| `stock_agent/analyze.py` | **facade**：re-export `core/analyze.py` 全部符号（analyze/analyze_with_validation/push_to_feishu/_parse_json/_repair_report/_add_usage/_dump_parse_failure/...）+ 保留 `OpenAI` import | `core/analyze.py`（主流程）+ `core/parser.py`（JSON解析）+ `core/repair.py`（修复） |
+| `stock_agent/render.py` | **facade**：re-export `core/render.py` | `core/render.py` |
+| `stock_agent/validator.py` | **facade**：re-export `core/validator.py` | `core/validator.py` |
+| `stock_agent/history.py` | **facade**：re-export `core/history.py` | `core/history.py` |
+| `stock_agent/models.py` | 拆为 `models/` 子包 + `models/__init__.py` re-export | `models/base.py` 等 |
+| `stock_agent/skill/__init__.py` | 拆为 `skill/client.py` + `skill/extract.py`，`__init__.py` re-export | `skill/client.py`、`skill/extract.py` |
+| `stock_agent/skill/report.py` | 拆为 `skill/collect.py`/`parse.py`/`format.py`，report.py 变门面 | 上述新文件 |
+
+> **facade 的核心价值**：`from stock_agent.analyze import analyze` 仍解析到 `analyze`（经 re-export 指向 `core.analyze.analyze`），`patch('stock_agent.analyze.OpenAI')` 仍能找到 `analyze` 模块属性 `OpenAI`（facade 里显式 `from openai import OpenAI`）。测试与路由**零改动**，同时 `core/` 包承载拆分后的内聚模块。
 
 ### 5.2 测试兼容
 
