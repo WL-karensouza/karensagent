@@ -71,7 +71,11 @@ def add_message(session_id: int, role: str, content: str,
 
 
 def list_messages(session_id: int, limit: int = 100) -> list[dict]:
-    """获取会话消息列表（按时间正序，limit 默认 100 条）"""
+    """获取会话消息列表（按时间正序，limit 默认 100 条）
+
+    tool_calls 落库时为 JSON 字符串，返回前统一反序列化为
+    数组/None，保证 API 契约稳定（前端按数组消费）。
+    """
     from models import ChatMessage
 
     db = SessionLocal()
@@ -83,6 +87,13 @@ def list_messages(session_id: int, limit: int = 100) -> list[dict]:
             .limit(limit)
             .all()
         )
-        return [_model_to_dict(r) for r in rows]
+        msgs = [_model_to_dict(r) for r in rows]
+        for m in msgs:
+            if isinstance(m.get("tool_calls"), str):
+                try:
+                    m["tool_calls"] = json.loads(m["tool_calls"])
+                except (ValueError, TypeError):
+                    m["tool_calls"] = None
+        return msgs
     finally:
         db.close()

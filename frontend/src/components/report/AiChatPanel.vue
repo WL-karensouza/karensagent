@@ -19,7 +19,13 @@ const toolSteps = computed(() => store.chatToolSteps)
 function renderMd(text) { return marked.parse(text) }
 
 function toolStepsFromRecord(record) {
-  return (record.tool_calls || []).map((tc, i) => ({
+  /* 历史消息的 tool_calls 可能是 JSON 字符串（旧数据）或数组（新数据），
+     渲染函数内绝不允许抛异常：统一解析并兜底为数组 */
+  let calls = record.tool_calls
+  if (typeof calls === 'string') {
+    try { calls = JSON.parse(calls) } catch { calls = [] }
+  }
+  return (Array.isArray(calls) ? calls : []).map((tc, i) => ({
     id: i, label: tc.label || tc.name, status: tc.ok ? 'done' : 'error',
   }))
 }

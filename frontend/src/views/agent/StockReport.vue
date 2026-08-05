@@ -164,11 +164,11 @@ async function handlePush() {
   padding: 32px 0 60px;
 }
 
-/* 两列骨架：左报告 + 右 360px sticky AI 面板 */
+/* 两列骨架：左报告 + 右 540px sticky AI 面板 */
 .report-layout { display: flex; gap: 32px; align-items: flex-start; }
 .report-main { flex: 1; min-width: 0; max-width: 792px; }
 .report-side {
-  width: 360px;
+  width: 540px;
   flex-shrink: 0;
   position: sticky;
   top: calc(var(--topnav-height, 64px) + 24px);

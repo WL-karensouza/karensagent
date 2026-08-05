@@ -29,7 +29,7 @@ const routes = [
   {
     path: '/agent/stock/report/:id',
     component: () => import('../views/agent/StockReport.vue'),
-    meta: { agent: 'stock', title: '股票分析 · 报告详情' },
+    meta: { agent: 'stock', title: '股票分析 · 报告详情', wide: true },
   },
   {
     path: '/agent/stock/history',

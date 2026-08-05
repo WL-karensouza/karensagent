@@ -93,7 +93,9 @@
       "Read(//d/Hello-Agent/prompt paradigm/plan and solve/**)",
       "Read(//d/Hello-Agent/transformer/section 1/**)",
       "Read(//d/Hello-Agent/prompt paradigm/ReAct/**)",
-      "Read(//d/Hello-Agent/prompt paradigm/reflection/**)"
+      "Read(//d/Hello-Agent/prompt paradigm/reflection/**)",
+      "Bash(bash \"C:\\\\Users\\\\王磊\\\\.claude\\\\skills\\\\subagent-driven-development\\\\scripts\\\\sdd-workspace\" docs/history-comparison-discovery-plan.md)",
+      "Bash(python -m pytest tests -q)"
     ]
   },
   "hooks": {

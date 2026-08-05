@@ -13,7 +13,7 @@ const route = useRoute()
     <TopNav />
 
     <!-- 主内容区（首页 3D 场景全屏：去掉限宽 / 内边距 / 导航偏移，消除多余滚动条） -->
-    <main class="main-content" :class="{ 'is-fullscreen': route.meta.noPageTransition }">
+    <main class="main-content" :class="{ 'is-fullscreen': route.meta.noPageTransition, 'is-wide': route.meta.wide }">
       <router-view v-slot="{ Component }">
         <!-- 首页（3D 场景）禁用全局页面切换动画，其余页面保留 -->
         <transition v-if="!route.meta.noPageTransition" name="page" mode="out-in">
@@ -34,6 +34,11 @@ const route = useRoute()
   max-width: none;
   padding: 0;
   margin-top: 0;
+}
+
+/* 宽页（报告详情）：放宽限宽，容纳「792 报告 + 32 间距 + 540 聊天」 */
+.main-content.is-wide {
+  max-width: 1460px;
 }
 
 .page-enter-active,
