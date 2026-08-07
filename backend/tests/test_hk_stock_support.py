@@ -126,6 +126,33 @@ def test_hk_stock_name_extracted_from_profile_table():
     print(f"[OK] 港股公司名提取 — {result['stock_name']}")
 
 
+def test_hk_stock_name_from_string_wrapped_answer():
+    """回归：真实应答 inner.data 是 JSON 字符串包裹 answer（非 dict）
+
+    2026-08-07 实证：global_stock_profile 真实响应的 data 为字符串，
+    extract str 分支不认 answer 时误分类成 json，名称提取链路被截断，
+    生产港股名称全落回代码（彼时 dict 形态测试全绿，掩盖了问题）。
+    """
+    from stock_agent.skill.report import generate_report_sync
+
+    def fake_call(server, tool, params):
+        # 真实形态：data 字段为 JSON 字符串，内层含 answer + indicators_params
+        return _envelope(json.dumps(
+            {"answer": PROFILE_ANSWER_2513, "indicators_params": {}},
+            ensure_ascii=False,
+        ))
+
+    restore = _patch_report(fake_call)
+    try:
+        result = generate_report_sync("2513.HK")
+    finally:
+        restore()
+
+    assert result["stock_name"] == "北京智谱华章科技股份有限公司", \
+        f"应从字符串包裹 answer 提取公司中文名称，实际：{result['stock_name']!r}"
+    print(f"[OK] 字符串包裹 answer 名称提取 — {result['stock_name']}")
+
+
 def test_a_share_still_routes_to_stock_server():
     """回归护栏：A 股代码仍走原 stock 服务，不受港股改动影响"""
     from stock_agent.skill.report import generate_report_sync
@@ -184,5 +211,6 @@ if __name__ == "__main__":
     test_hk_code_routes_to_global_stock()
     test_extract_text_flags_out_of_scope()
     test_hk_stock_name_extracted_from_profile_table()
+    test_hk_stock_name_from_string_wrapped_answer()
     test_a_share_still_routes_to_stock_server()
     test_news_dimensions_carry_time_range()

@@ -5,6 +5,18 @@
 import json
 
 
+def _is_out_of_scope_answer(answer) -> bool:
+    """数据范围外应答判定（如查港股走了 A 股服务），厂商以自然语言拒答"""
+    return isinstance(answer, str) and "不属于" in answer and "数据范围" in answer
+
+
+def _answer_of(data) -> str | None:
+    """iFinD 应答文本提取：dict 含 answer 键即视为应答（dict/字符串包裹两种形态共用）"""
+    if isinstance(data, dict) and "answer" in data:
+        return data["answer"]
+    return None
+
+
 def extract_text(result: dict) -> str:
     """从 SKILL 返回结果中提取文本内容
 
@@ -53,10 +65,10 @@ def extract_text(result: dict) -> str:
 
     # 新闻/公告类：data 是 dict，含 "data" 字段（JSON 数组字符串）
     if isinstance(inner_data, dict):
-        if "answer" in inner_data:
-            answer = inner_data["answer"]
+        answer = _answer_of(inner_data)
+        if answer is not None:
             # 数据范围外应答（如查港股走了 A 股服务）→ 标记为无数据
-            if isinstance(answer, str) and "不属于" in answer and "数据范围" in answer:
+            if _is_out_of_scope_answer(answer):
                 return f"[无数据] {answer}"
             return answer
         if "data" in inner_data:
@@ -76,6 +88,13 @@ def extract_text(result: dict) -> str:
     if isinstance(inner_data, str):
         try:
             table_data = json.loads(inner_data)
+            # 与 dict 分支对齐：global_stock 应答的 data 为 JSON 字符串包裹 answer，
+            # 不识别会误分类成 json，截断港股名称提取链路（2026-08-07 实证根因）
+            answer = _answer_of(table_data)
+            if answer is not None:
+                if _is_out_of_scope_answer(answer):
+                    return f"[无数据] {answer}"
+                return answer
             if isinstance(table_data, dict) and "tables" in table_data:
                 return _format_table(table_data)
             return json.dumps(table_data, ensure_ascii=False, indent=2)
@@ -156,8 +175,9 @@ def extract_raw(result: dict):
 
     # 新闻/公告类：data 是 dict
     if isinstance(inner_data, dict):
-        if "answer" in inner_data:
-            return {"type": "answer", "text": inner_data["answer"]}
+        answer = _answer_of(inner_data)
+        if answer is not None:
+            return {"type": "answer", "text": answer}
         if "data" in inner_data:
             news_data = inner_data["data"]
             if isinstance(news_data, str):
@@ -174,6 +194,10 @@ def extract_raw(result: dict):
     if isinstance(inner_data, str):
         try:
             table_data = json.loads(inner_data)
+            # 与 dict 分支对齐：JSON 字符串包裹 answer（global_stock 应答形态）
+            answer = _answer_of(table_data)
+            if answer is not None:
+                return {"type": "answer", "text": answer}
             if isinstance(table_data, dict) and "tables" in table_data:
                 return {"type": "table", "tables": table_data["tables"]}
             return {"type": "json", "data": table_data}
