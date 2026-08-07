@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useStockStore } from '../../stores/stock.js'
 import { scoreColor, decisionBadge } from '../../utils/stock.js'
+import { slideDotCount } from '../../utils/carousel.js'
 import DividerLine from '../../components/DividerLine.vue'
 import { marked } from 'marked'
 
@@ -120,20 +121,12 @@ const currentSlide = ref(0)
 const maxSlide = computed(() => Math.max(0, store.watchlist.length - VISIBLE))
 const needsNav = computed(() => store.watchlist.length > VISIBLE)
 
-/* 原型 dots 逻辑：≤3 页 → 1 枚，≥4 页 → 2 枚；点击时 toggle 跳转 */
-const dotCount = computed(() => maxSlide.value <= 3 ? 1 : 2)
+/* 指示点与可滑位置一一对应：点数 = 位置数，高亮 = 当前位置，点第 i 枚跳到位置 i */
+const dotCount = computed(() => slideDotCount(store.watchlist.length, VISIBLE))
 function goDot(idx) {
-  if (dotCount.value === 1) {
-    currentSlide.value = currentSlide.value === 0 ? maxSlide.value : 0
-  } else {
-    currentSlide.value = idx === 0 ? 0 : maxSlide.value
-  }
+  currentSlide.value = idx
 }
-/* 当前哪个 dot 应该高亮（原型逻辑：1 枚时仅 position 0 亮，2 枚时按前后半段分） */
-const activeDot = computed(() => {
-  if (dotCount.value === 1) return currentSlide.value === 0 ? 0 : -1
-  return currentSlide.value < Math.ceil(maxSlide.value / 2) ? 0 : 1
-})
+const activeDot = computed(() => currentSlide.value)
 
 function slidePrev() {
   if (currentSlide.value > 0) currentSlide.value--
