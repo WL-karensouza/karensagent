@@ -445,7 +445,8 @@ export const useStockStore = defineStore('stock', {
       this.chatAsking = true
       this.chatThinking = true
       this.chatToolSteps = []
-      this.chatMessages.push({ role: 'user', content: question, tool_calls: null })
+      /* created_at 为前端发送时刻，供消息行元信息展示（历史消息用后端落库时间） */
+      this.chatMessages.push({ role: 'user', content: question, tool_calls: null, created_at: new Date().toISOString() })
 
       let stepId = 0
       const controller = api.fetchChatAsk(stockCode, {
@@ -468,13 +469,13 @@ export const useStockStore = defineStore('stock', {
           if (!isCurrent()) return
           const last = this.chatMessages[this.chatMessages.length - 1]
           if (last && last.role === 'assistant') last.content += d.text
-          else this.chatMessages.push({ role: 'assistant', content: d.text, tool_calls: null })
+          else this.chatMessages.push({ role: 'assistant', content: d.text, tool_calls: null, created_at: new Date().toISOString() })
         },
         onDone: (d) => {
           if (isCurrent()) {
             const last = this.chatMessages[this.chatMessages.length - 1]
             if (last && last.role === 'assistant') last.content = d.full
-            else this.chatMessages.push({ role: 'assistant', content: d.full, tool_calls: null })
+            else this.chatMessages.push({ role: 'assistant', content: d.full, tool_calls: null, created_at: new Date().toISOString() })
           }
           // 无论归属如何都重置状态，避免旧请求卡死新会话的输入
           this.chatThinking = false

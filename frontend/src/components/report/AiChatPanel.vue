@@ -1,9 +1,9 @@
 <!-- AI 问答助理面板：满高聊天结构，承载真实会话（历史 + 流式回答 + 步骤卡片） -->
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { marked } from 'marked'
 import { useStockStore } from '../../stores/stock.js'
 import AiStepsCard from './AiStepsCard.vue'
+import ChatMessageItem from './ChatMessageItem.vue'
 
 const store = useStockStore()
 const input = ref('')
@@ -12,23 +12,10 @@ const report = computed(() => store.currentReport)
 const stockCode = computed(() => report.value?.stock_code || '')
 const stockName = computed(() => report.value?.stock_name || '')
 
-/* 历史消息渲染（含 tool_calls 转步骤卡片） */
+/* 历史消息渲染（单条消息结构下沉到 ChatMessageItem） */
 const messages = computed(() => store.chatMessages)
 const thinking = computed(() => store.chatThinking)
 const toolSteps = computed(() => store.chatToolSteps)
-function renderMd(text) { return marked.parse(text) }
-
-function toolStepsFromRecord(record) {
-  /* 历史消息的 tool_calls 可能是 JSON 字符串（旧数据）或数组（新数据），
-     渲染函数内绝不允许抛异常：统一解析并兜底为数组 */
-  let calls = record.tool_calls
-  if (typeof calls === 'string') {
-    try { calls = JSON.parse(calls) } catch { calls = [] }
-  }
-  return (Array.isArray(calls) ? calls : []).map((tc, i) => ({
-    id: i, label: tc.label || tc.name, status: tc.ok ? 'done' : 'error',
-  }))
-}
 
 async function send() {
   const q = input.value.trim()
@@ -66,11 +53,8 @@ onMounted(() => {
         <p>对这份投研报告有任何疑问，尽管问 karens。</p>
       </div>
 
-      <!-- 消息气泡 -->
-      <div v-for="(m, i) in messages" :key="i" class="msg" :class="m.role">
-        <div class="bubble" v-html="renderMd(m.content)"></div>
-        <AiStepsCard v-if="m.role === 'assistant' && m.tool_calls" :steps="toolStepsFromRecord(m)" />
-      </div>
+      <!-- 消息气泡：单条消息组件（头像 + 元信息行 + 气泡 + 步骤卡片） -->
+      <ChatMessageItem v-for="(m, i) in messages" :key="i" :message="m" />
 
       <!-- 思考中 -->
       <div v-if="thinking" class="ai-thinking">
@@ -130,34 +114,6 @@ onMounted(() => {
   font-size: 0.82rem;
   line-height: 1.7;
   padding: 0 12px;
-}
-/* 消息行：用户右对齐 / 助理左对齐 */
-.msg { display: flex; flex-direction: column; gap: 6px; }
-.msg.user { align-items: flex-end; }
-.msg.assistant { align-items: flex-start; }
-/* 气泡：浅色系，最大宽避免顶满 */
-.bubble {
-  max-width: 92%;
-  padding: 9px 12px;
-  border-radius: var(--radius-md);
-  font-size: 0.82rem;
-  line-height: 1.65;
-  word-break: break-word;
-}
-.bubble :deep(p) { margin: 0 0 6px; }
-.bubble :deep(p:last-child) { margin-bottom: 0; }
-.bubble :deep(ul), .bubble :deep(ol) { margin: 4px 0; padding-left: 18px; }
-.bubble :deep(strong) { font-weight: 600; }
-.bubble :deep(code) { background: var(--bg-hover); padding: 1px 5px; border-radius: 4px; font-size: 0.78rem; }
-.msg.user .bubble {
-  background: var(--accent);
-  color: #fff;
-  border-bottom-right-radius: 4px;
-}
-.msg.assistant .bubble {
-  background: var(--sent-bg);
-  color: var(--sent-strong);
-  border-bottom-left-radius: 4px;
 }
 /* 思考中提示：浅色 + 呼吸三点 */
 .ai-thinking {

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none">
+  <!-- 助理头像：暖底圆形 + 简约机器人，配色跟随项目琥珀色系 -->
+  <circle cx="20" cy="20" r="20" fill="#FEF3C7"/>
+  <line x1="20" y1="8" x2="20" y2="12" stroke="#D97706" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="20" cy="7" r="2" fill="#D97706"/>
+  <rect x="10" y="12" width="20" height="16" rx="5" fill="#D97706"/>
+  <circle cx="16" cy="20" r="2.2" fill="#FFFFFF"/>
+  <circle cx="24" cy="20" r="2.2" fill="#FFFFFF"/>
+  <path d="M16 25h8" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round"/>
+</svg>
