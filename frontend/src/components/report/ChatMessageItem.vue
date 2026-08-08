@@ -10,11 +10,15 @@ const props = defineProps({
   message: { type: Object, required: true },
 })
 
+/* 对话双方固定显示名称 */
+const USER_NAME = 'Simon'
+const ASSISTANT_NAME = 'Karens'
+
 const isUser = computed(() => props.message.role === 'user')
-/* 助理侧显示「karens · 时间」；用户侧按需求只显示时间 */
+/* 元信息行：双方都显示「名称 · 时间」 */
 const metaText = computed(() => {
   const t = formatChatTime(props.message.created_at)
-  return isUser.value ? t : ['karens', t].filter(Boolean).join(' · ')
+  return [isUser.value ? USER_NAME : ASSISTANT_NAME, t].filter(Boolean).join(' · ')
 })
 
 function renderMd(text) { return marked.parse(text) }

@@ -42,7 +42,7 @@ onMounted(() => {
              stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
         </svg>
-        <strong>karens 问答助理</strong>
+        <strong>Karens 问答助理</strong>
       </div>
     </header>
 
@@ -50,7 +50,7 @@ onMounted(() => {
     <div class="ai-body">
       <!-- 空态：无消息时显示欢迎语 -->
       <div v-if="!messages.length" class="ai-empty">
-        <p>对这份投研报告有任何疑问，尽管问 karens。</p>
+        <p>对这份投研报告有任何疑问，尽管问 Karens。</p>
       </div>
 
       <!-- 消息气泡：单条消息组件（头像 + 元信息行 + 气泡 + 步骤卡片） -->
@@ -59,7 +59,7 @@ onMounted(() => {
       <!-- 思考中 -->
       <div v-if="thinking" class="ai-thinking">
         <span class="ai-dots"><i></i><i></i><i></i></span>
-        <span>karens 正在理解你的问题…</span>
+        <span>Karens 正在理解你的问题…</span>
       </div>
 
       <!-- 工具步骤卡片（实时） -->
