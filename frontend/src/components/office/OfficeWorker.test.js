@@ -37,4 +37,12 @@ describe('OfficeWorker', () => {
     // defineExpose 拼错会静默失败，这里锁定契约
     expect(wrapper.vm.walkTo).toBeTypeOf('function')
   })
+
+  it('暴露 sitDown 供会谈后回工位坐下', () => {
+    const wrapper = mount(OfficeWorker, {
+      props: { position: [0, 0, 0], workerId: 'ai_news' },
+    })
+    // F3 契约：walkTo 透传到达回调，sitDown 由状态机落座
+    expect(wrapper.vm.sitDown).toBeTypeOf('function')
+  })
 })
