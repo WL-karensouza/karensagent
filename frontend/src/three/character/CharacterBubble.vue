@@ -2,7 +2,8 @@
 /* ═══════════════════════════════════════════
    CharacterBubble —— 人物头顶对话气泡
    输入目标世界坐标，渲染循环投影到屏幕定位 div
-   show(text) 显示台词，DURATION 秒后自动淡出
+   show(text, position?) 显示台词，DURATION 秒后自动淡出
+   传 position 则气泡跟随说话者（更新世界坐标）
    ═══════════════════════════════════════════ */
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useTres, useLoop } from '@tresjs/core'
@@ -36,7 +37,9 @@ onRender(() => {
   }
 })
 
-function show(msg) {
+function show(msg, position) {
+  // 传 position 则气泡跟随说话者（世界坐标），否则沿用 props.target 初始位置
+  if (position) worldPos.set(position.x, position.y, position.z)
   text.value = msg
   visible.value = true
   clearTimeout(hideTimer)
