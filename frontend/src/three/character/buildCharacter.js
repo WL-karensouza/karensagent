@@ -125,6 +125,10 @@ export function buildCharacter({ gender = 'male', shirtColor = '#9CC7E8' } = {})
   const headGeo = new LatheGeometry(headProfile, 24)
   headGeo.computeVertexNormals()
   const headMesh = makePart(headGeo, skinMat, bones.Head, new Vector3(0, 0.09, 0))
+  // F3（Task 6 审查 I-1 修正）：脸部朝向 —— Lathe 贴图中心 u=0.5 落在 -Z，脸默认朝 -Z，
+  //   状态机 faceToward 假设模型面朝 +Z，故 headMesh/hairMesh 绕自身 Y 转 π 使脸朝 +Z。
+  //   Head 骨骼动画仅 x 轴点头（无 y 旋转），此 rotation.y 不会被动画覆盖，安全。
+  headMesh.rotation.y = Math.PI
 
   // 躯干（锥形，宽肩收腰）
   const torsoGeo = new LatheGeometry([
@@ -166,6 +170,7 @@ export function buildCharacter({ gender = 'male', shirtColor = '#9CC7E8' } = {})
     : new LatheGeometry([new Vector2(0.11, 0), new Vector2(0.15, 0.06), new Vector2(0.15, 0.2), new Vector2(0.13, 0.3)], 24)
   hairGeo.computeVertexNormals()
   const hairMesh = makePart(hairGeo, hairMat, bones.Head, new Vector3(0, 0.09, -0.005))
+  hairMesh.rotation.y = Math.PI // 与 headMesh 同步转 π，保持发片贴合头部方位
 
   group.add(headMesh, torsoMesh, hairMesh, root)
 

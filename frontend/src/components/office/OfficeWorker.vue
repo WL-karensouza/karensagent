@@ -4,10 +4,10 @@
    用 buildCharacter 构建风格化人物 + 状态机驱动
    替代原 useFBX 加载 Mixamo 坐姿模型
    交互：点击上抛 select；悬停挥手+看镜头+手形光标
-   位置：charGroup 承载工位坐标（世界坐标语义），TresGroup 仅作事件容器
+   位置：built.group 承载工位坐标（世界坐标语义），TresGroup 仅作事件容器
    ═══════════════════════════════════════════ */
-import { ref, shallowRef, onMounted } from 'vue'
-import { Group, LoopOnce } from 'three'
+import { shallowRef, onMounted } from 'vue'
+import { LoopOnce } from 'three'
 import { useLoop } from '@tresjs/core'
 import { buildCharacter } from '../../three/character/buildCharacter'
 import { createAnimations } from '../../three/character/characterAnimations'
@@ -37,17 +37,13 @@ const { onRender } = useLoop()
 function ensureBuilt() {
   if (char.value) return
   const built = buildCharacter({ gender: GENDER, shirtColor: SHIRT })
+  /* 脸部朝向已由 buildCharacter 修正为 +Z（headMesh/hairMesh 局部转 π），
+     built.group 保持不转，walk 骨骼位移（局部 +Z）与 faceToward 前进方向一致 */
+  built.group.position.set(props.position[0], 0, props.position[2])
   mixer = built.mixer
   const animations = createAnimations()
-  /* 跨任务决策 1（faceToward 假设模型面朝 +Z，实测 buildCharacter 脸朝 -Z）：
-     内层 built.group 固定绕 Y 180° 把几何脸转到 +Z；外层 charGroup 由状态机驱动
-     （位移 + 朝向），保证 faceToward 的 forward(+Z) 与脸方向一致，且位移为世界坐标 */
-  const charGroup = new Group()
-  built.group.rotation.y = Math.PI
-  charGroup.add(built.group)
-  charGroup.position.set(props.position[0], 0, props.position[2])
   motion = createMotionController({
-    group: charGroup,
+    group: built.group,
     mixer,
     animations,
     speed: 0.8,
@@ -59,7 +55,7 @@ function ensureBuilt() {
   }
   /* 先播放 idleStand */
   mixer.clipAction(animations.idleStand).reset().play()
-  char.value = charGroup
+  char.value = built.group
 }
 onMounted(ensureBuilt)
 
@@ -69,15 +65,12 @@ onRender(({ delta }) => {
 })
 
 /* 交互 */
-const hovered = ref(false)
 function onOver() {
-  hovered.value = true
   document.body.style.cursor = 'pointer'
   // 悬停：挥手 + 看镜头（talk 循环姿态）
   if (motion) motion.setState('talk')
 }
 function onOut() {
-  hovered.value = false
   document.body.style.cursor = 'auto'
   if (motion) motion.setState('idle')
 }

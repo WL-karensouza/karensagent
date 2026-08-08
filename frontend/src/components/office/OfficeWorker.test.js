@@ -29,4 +29,12 @@ describe('OfficeWorker', () => {
     await wrapper.trigger('click')
     expect(wrapper.emitted('select')).toBeTruthy()
   })
+
+  it('暴露 walkTo 供 Task 7 会谈调度驱动', () => {
+    const wrapper = mount(OfficeWorker, {
+      props: { position: [0, 0, 0], workerId: 'ai_news' },
+    })
+    // defineExpose 拼错会静默失败，这里锁定契约
+    expect(wrapper.vm.walkTo).toBeTypeOf('function')
+  })
 })
