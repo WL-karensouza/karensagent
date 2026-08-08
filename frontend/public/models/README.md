@@ -3,12 +3,14 @@
 本目录存放 3D 办公室场景的外部 glTF 素材。几何体兜底仍在组件内，
 模型缺失时场景自动降级为原积木风，**素材可随时增量添加**。
 
+> 工作人员已改为纯代码构建，无外部人物模型；人物模块位于
+> `frontend/src/three/character/`，如需调整造型/动画请改代码而非换模型。
+
 ## 目录约定
 
 ```
 models/
 ├── furniture/   办公家具（桌 / 椅 / 显示器 …）
-├── worker/      工作人员角色（建议带骨骼动画）
 ├── decor/       装饰物（绿植 / 书架 / 咖啡机 …）
 └── textures/    PBR 贴图（地板 / 墙面，JPG 格式）
 ```
@@ -19,8 +21,7 @@ models/
 
 | 站点 | 地址 | 适合选 | 搜索关键词 |
 |---|---|---|---|
-| Poly Pizza | https://poly.pizza | 家具 / 装饰 / 角色（量最大） | `office desk`、`office chair`、`computer monitor`、`potted plant`、`bookshelf`、`coffee machine` |
-| Quaternius | https://quaternius.com | **带动画的角色**（worker 用） | 直接下载 "Animated Characters" 包 |
+| Poly Pizza | https://poly.pizza | 家具 / 装饰（量最大） | `office desk`、`office chair`、`computer monitor`、`potted plant`、`bookshelf`、`coffee machine` |
 | Kenney | https://kenney.nl/assets | 风格统一的整套资产 | `Office Pack`、`City Kit` |
 | ambientCG | https://ambientcg.com | PBR 贴图（放 textures/） | `Wood Flooring`、`Painted Wall`，下 JPG 1K/2K |
 
@@ -39,7 +40,6 @@ models/
 | 办公桌 | `desk.glb` | 桌面 1.7 × 0.85m，桌面高 0.75m |
 | 办公椅 | `chair.glb` | 座垫高 0.46m，靠背顶高 0.97m |
 | 显示器 | `monitor.glb` | 屏宽 0.72m，屏幕中心高 1.18m |
-| 工作人员 | `character.glb` | 坐姿头顶约 1.38m（接入时会自动缩放对齐，无需精确） |
 | 绿植 | `plant.glb` | 全高约 1.3m |
 | 书架 | `bookshelf.glb` | 1.2 × 1.8 × 0.35m |
 | 咖啡机 | `coffee_machine.glb` | 0.5 × 1.0 × 0.5m |
