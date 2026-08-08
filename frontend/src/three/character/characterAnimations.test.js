@@ -27,4 +27,13 @@ describe('createAnimations', () => {
     const hasRot = idleStand.tracks.some((t) => t.name.includes('Head.rotation'))
     expect(hasRot).toBe(true)
   })
+
+  it('所有 track 的 values 长度 = times 长度 × valueSize（防 keyframe length mismatch）', () => {
+    const anims = createAnimations()
+    for (const anim of Object.values(anims)) {
+      for (const track of anim.tracks) {
+        expect(track.values.length).toBe(track.times.length * track.getValueSize())
+      }
+    }
+  })
 })

@@ -2,10 +2,12 @@
    characterAnimations —— 手写人物动画 clip
    姿态类：骨骼 rotation 关键帧（四元数，无万向锁）
    位移类：Hips.position 关键帧（如 walk 前进）
-   循环类 loop=true；一次性类 loop=false
+   一次性语义（wave/reactClick/sit/standUp）由消费方
+   （Task 4 状态机）用 action.setLoop(THREE.LoopOnce, 1) 控制；
+   three r179 的 AnimationClip 已无 loop 属性，故本文件不设置。
    ═══════════════════════════════════════════ */
 import {
-  AnimationClip, Quaternion, Vector3, Euler, VectorKeyframeTrack, QuaternionKeyframeTrack,
+  AnimationClip, Quaternion, Euler, VectorKeyframeTrack, QuaternionKeyframeTrack,
 } from 'three'
 
 /* 便捷四元数：由欧拉角（弧度）构造 */
@@ -36,6 +38,8 @@ export function createAnimations() {
     rotTrack('RightLowerLeg', [0, 0.6, 1.2], [q(0.3, 0, 0), q(-0.3, 0, 0), q(0.3, 0, 0)]),
     rotTrack('LeftUpperArm', [0, 0.6, 1.2], [q(-0.5, 0, 0), q(0.5, 0, 0), q(-0.5, 0, 0)]),
     rotTrack('RightUpperArm', [0, 0.6, 1.2], [q(0.5, 0, 0), q(-0.5, 0, 0), q(0.5, 0, 0)]),
+    // 上身前倾：行走时躯干随步态轻微前倾（语义契约要求）
+    rotTrack('Spine', [0, 0.6, 1.2], [q(0, 0, 0), q(0.08, 0, 0), q(0, 0, 0)]),
   ])
 
   // 坐下：髋后移下沉 + 脊柱前屈
@@ -74,7 +78,6 @@ export function createAnimations() {
 
   // 被点击打招呼（一次性，欠身+挥手）
   const reactClick = new AnimationClip('reactClick', 1.2, [
-    rotTrack('Hips', [0, 1.2], [q(0, 0, 0), q(0, 0, 0)]),
     rotTrack('Spine', [0, 0.3, 1.2], [q(0, 0, 0), q(0.2, 0, 0), q(0, 0, 0)]),
     rotTrack('RightUpperArm', [0, 0.2, 0.6, 1.0, 1.2], [q(0, 0, 0), q(-2.4, 0, -0.3), q(-2.4, 0, 0.3), q(-2.4, 0, -0.3), q(0, 0, 0)]),
   ])
