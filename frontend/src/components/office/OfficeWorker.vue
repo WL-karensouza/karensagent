@@ -49,9 +49,12 @@ function ensureBuilt() {
     speed: 0.8,
   })
   /* 跨任务决策 2（一次性动画 LoopOnce）：wave/reactClick/sit/standUp 播完停末帧；
+     clampWhenFinished=true（C2 修复）：只设 LoopOnce 时 three r179 播完
+     enabled=false 会恢复 bind pose（坐姿弹回站立），clamp 后保持末帧坐姿/挥手位；
      Task 4 的 playClip 每次 play 前 reset，故重复触发可正常重播 */
   for (const n of ['wave', 'reactClick', 'sit', 'standUp']) {
-    mixer.clipAction(animations[n]).setLoop(LoopOnce, 1)
+    const act = mixer.clipAction(animations[n]).setLoop(LoopOnce, 1)
+    act.clampWhenFinished = true
   }
   /* 先播放 idleStand */
   mixer.clipAction(animations.idleStand).reset().play()

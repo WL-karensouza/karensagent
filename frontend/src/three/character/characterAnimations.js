@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════
    characterAnimations —— 手写人物动画 clip
-   姿态类：骨骼 rotation 关键帧（四元数，无万向锁）
+   姿态类：骨骼 quaternion 关键帧（四元数直写，无万向锁）
    位移类：Hips.position 关键帧（如 walk 前进）
    一次性语义（wave/reactClick/sit/standUp）由消费方
    （Task 4 状态机）用 action.setLoop(THREE.LoopOnce, 1) 控制；
@@ -13,9 +13,14 @@ import {
 /* 便捷四元数：由欧拉角（弧度）构造 */
 const q = (x, y, z) => new Quaternion().setFromEuler(new Euler(x, y, z))
 
-/* 骨骼 rotation 单段轨迹（两端同一四元数，中间目标值） */
+/* 骨骼旋转单段轨迹（两端同一四元数，中间目标值）
+   轨道名必须用 `.quaternion` 而非 `.rotation`（C1 修复）：
+   three r179 的 PropertyBinding 对 `.rotation`（Euler）走 Euler.fromArray，
+   会把四元数 [x,y,z,w] 的 w 值写进 Euler._order，随后 setFromEuler 落入
+   unknown order 分支、骨骼四元数不更新 → 骨骼永不转动。
+   `.quaternion` 让 PropertyBinding 直写四元数（Quaternion.fromArray），不经 Euler。 */
 function rotTrack(name, times, quats) {
-  return new QuaternionKeyframeTrack(`${name}.rotation`, times, quats.flatMap((e) => [e.x, e.y, e.z, e.w]))
+  return new QuaternionKeyframeTrack(`${name}.quaternion`, times, quats.flatMap((e) => [e.x, e.y, e.z, e.w]))
 }
 
 export function createAnimations() {
