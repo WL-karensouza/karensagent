@@ -34,4 +34,15 @@ describe('createMotionController', () => {
     const c = createMotionController(fakeChar())
     expect(() => c.setState('idle')).not.toThrow()
   })
+
+  it('到达目标后触发 onReachWaypoint 且完成转向对齐', () => {
+    const onReachWaypoint = vi.fn()
+    const f = fakeChar()
+    const c = createMotionController({ ...f, waypoints: [], speed: 100, onReachWaypoint })
+    c.walkTo(0.1, 0) // 极近目标
+    c.update(0.5, 0)
+    expect(onReachWaypoint).toHaveBeenCalledTimes(1)
+    // 落位前应有一次 slerp 转向对齐（I-1 修复）
+    expect(f.group.quaternion.slerp).toHaveBeenCalled()
+  })
 })

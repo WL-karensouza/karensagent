@@ -25,10 +25,14 @@ export function createMotionController({ group, mixer, animations, waypoints = [
   let action = null           // 当前播放的 mixer action
   const forward = new Vector3(0, 0, 1) // 人物默认朝向（buildCharacter 模型面朝 +Z）
 
-  /* 播放某 clip，可选淡入时长（分步调用，兼容 vi.fn() 无链式返回值） */
+  /* 播放某 clip，可选淡入时长
+     分步调用兼容 fake（vi.fn() 无链式返回值）；
+     reset?.() 可选调用：真实 three AnimationAction 二次播放一次性动画
+     （wave/reactClick）必须先 reset 才能从头播，fake 无 reset 也不崩 */
   function playClip(name, fadeIn = 0.2) {
     if (action) action.fadeOut(0.1)
     const next = mixer.clipAction(animations[name])
+    next.reset?.()
     next.fadeIn(fadeIn)
     next.play()
     action = next
@@ -37,7 +41,12 @@ export function createMotionController({ group, mixer, animations, waypoints = [
   /* 手动切换姿态（入参小写，内部统一为大写常量） */
   function setState(next) {
     const s = STATE_MAP[next]
-    if (s == null || state === s) return
+    if (s == null) {
+      // 未知姿态（如误传大写）静默忽略，打日志便于排查
+      console.warn(`[useCharacterMotion] 未知姿态: ${next}，忽略`)
+      return
+    }
+    if (state === s) return
     state = s
     switch (s) {
       case 'IDLE': playClip('idleStand'); break
@@ -54,13 +63,14 @@ export function createMotionController({ group, mixer, animations, waypoints = [
     setState('walk')
   }
 
-  /* 原地平滑转向目标（slerp 朝目标插值，多次调用逐渐收敛） */
-  function faceToward(x, z) {
+  /* 原地平滑转向目标：slerp 朝目标插值，t 为插值系数（默认缓慢收敛，
+     传 1 则一步精确对齐）。需在移动/落位前调用，避免 dx/dz 归零） */
+  function faceToward(x, z, t = 0.15) {
     const dx = x - group.position.x
     const dz = z - group.position.z
     if (Math.hypot(dx, dz) < EPS) return
     const targetQ = new Quaternion().setFromUnitVectors(forward, new Vector3(dx, 0, dz).normalize())
-    group.quaternion.slerp(targetQ, 0.15)
+    group.quaternion.slerp(targetQ, t)
   }
 
   /* 是否在走动：处于 WALK 状态或仍持有未到达目标 */
@@ -68,9 +78,9 @@ export function createMotionController({ group, mixer, animations, waypoints = [
     return state === 'WALK' || target != null
   }
 
-  /* 每帧驱动：推进 mixer + 处理走向目标的移动/转向 */
-  function update(delta) {
-    mixer.update(delta)
+  /* 每帧驱动：推进 mixer + 处理走向目标的移动/转向（time 供消费方传全局时钟，暂未使用） */
+  function update(delta, time) {
+    mixer.update(delta, time)
 
     if (!target) return
 
@@ -81,6 +91,9 @@ export function createMotionController({ group, mixer, animations, waypoints = [
     // 已到达（或移动不超过目标点，clamp 落地）
     const step = speed * delta
     if (dist < EPS || dist <= step) {
+      // 到达即清 target 前先精确对齐朝向（t=1），
+      // 避免背对目标一步到达时从未转向（I-1 修复）
+      faceToward(target.x, target.z, 1)
       group.position.x = target.x
       group.position.z = target.z
       target = null
