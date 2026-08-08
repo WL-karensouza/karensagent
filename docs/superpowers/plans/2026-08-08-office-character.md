@@ -237,13 +237,13 @@ const H = {
   ankleY: 0.08,      // 踝
 }
 
-/* 创建胶囊网格，可绑定骨骼 */
+/* 创建胶囊网格：网格 add 到 group，用独立 Skeleton 绑定到对应骨骼
+   ⚠️ 绝不能 mesh.add(bone) —— 那会把骨骼从 Hips 链摘走，动画失效（F2 修复） */
 function makePart(geo, mat, bone, pos, cast = true) {
   const mesh = new SkinnedMesh(geo, mat)
   mesh.position.copy(pos)
   mesh.castShadow = cast
   mesh.receiveShadow = true
-  mesh.add(bone)
   mesh.bind(new Skeleton([bone]))
   return mesh
 }
@@ -711,7 +711,7 @@ git commit -m "feat(office): 新增人物运动状态机"
 
 **Interfaces:**
 - Consumes: Vue 3 标准 props；`THREE.Vector3` 世界坐标
-- Produces: 通过 `@tresjs/core` 的 `useTres()` 提供 `show(text)` 方法（在组件暴露 `defineExpose({ show })`），气泡在给定世界坐标上方显示，数秒自动消失
+- Produces: 通过 `@tresjs/core` 的 `useTres()` 提供 `show(text, position?)` 方法（在组件暴露 `defineExpose({ show })`），气泡在给定世界坐标上方显示，数秒自动消失。`position` 可选：传入则气泡跟随该世界坐标，缺省用 props.target
 
 - [ ] **Step 1: 写失败测试**
 
@@ -782,8 +782,10 @@ onRender(() => {
   }
 })
 
-function show(msg) {
+/* show(msg, position?) —— position 为说话者世界坐标 {x,y,z}，气泡跟随；缺省用 props.target */
+function show(msg, position) {
   text.value = msg
+  if (position) worldPos.set(position.x, position.y, position.z)
   visible.value = true
   clearTimeout(hideTimer)
   hideTimer = setTimeout(() => { visible.value = false }, DURATION)
@@ -1091,13 +1093,17 @@ function startMeeting() {
     // 两人走向中央会谈区
     document.dispatchEvent(new CustomEvent('worker-go', { detail: { id: 'ai_news', x: 0, z: -0.5 } }))
     document.dispatchEvent(new CustomEvent('worker-go', { detail: { id: 'stock', x: 1.2, z: -0.5 } }))
-    // 轮流冒泡
+    // 轮流冒泡：气泡跟随说话者（头顶上方 y≈2.0）
     const lines = [...LINES]
+    const SPEAK_POS = {
+      ai_news: { x: 0, y: 2, z: -0.5 },
+      stock: { x: 1.2, y: 2, z: -0.5 },
+    }
     let i = 0
     const iv = setInterval(() => {
       const line = lines[i % lines.length]
       const speaker = i % 2 === 0 ? 'ai_news' : 'stock'
-      bubbleRef.value?.show(line)
+      bubbleRef.value?.show(line, SPEAK_POS[speaker])
       i++
       if (i >= 3) { clearInterval(iv); scheduleNext() }
     }, 2000)
