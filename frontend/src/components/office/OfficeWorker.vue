@@ -67,24 +67,28 @@ onRender(({ delta }) => {
 /* 交互 */
 function onOver() {
   document.body.style.cursor = 'pointer'
-  // 悬停：挥手 + 看镜头（talk 循环姿态）
-  if (motion) motion.setState('talk')
+  // 悬停：挥手（wave 一次性动画，LoopOnce 播完停末帧挥手位）
+  if (motion) motion.setState('wave')
 }
 function onOut() {
   document.body.style.cursor = 'auto'
   if (motion) motion.setState('idle')
 }
 function onClick() {
-  // 播打招呼动画（LoopOnce 一次性）+ 立即上抛 select（路由跳转交给上层）
-  if (motion) motion.setState('standUp')
+  // 王磊哥哥拍板：点击立即跳转（无延迟），打招呼动画不可见故不再播放
   emit('select', props.workerId)
 }
 
-/* 暴露给 OfficeScene：会谈调度驱动工人走向目标（世界坐标） */
-function walkTo(x, z) {
-  if (motion) motion.walkTo(x, z)
+/* 暴露给 OfficeScene：会谈调度驱动工人走向目标（世界坐标）；
+   onArrive：到达目标后的回调（会谈结束回工位后坐下） */
+function walkTo(x, z, onArrive) {
+  if (motion) motion.walkTo(x, z, onArrive)
 }
-defineExpose({ walkTo })
+/* 到达工位后坐下：落座（sit 一次性）+ 打字循环（sitIdle 叠加） */
+function sitDown() {
+  if (motion) motion.sitDown()
+}
+defineExpose({ walkTo, sitDown })
 </script>
 
 <template>
