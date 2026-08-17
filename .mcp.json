@@ -8,6 +8,10 @@
       ],
       "cwd": "D:\\karensAgent",
       "type": "stdio"
+    },
+    "plumb-mcp": {
+      "command": "plumb-mcp.cmd",
+      "type": "stdio"
     }
   }
 }
