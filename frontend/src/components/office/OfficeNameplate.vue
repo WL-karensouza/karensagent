@@ -14,6 +14,9 @@ const props = defineProps({
   text: { type: String, default: '' },
 })
 
+/* 点击名牌 → 上抛 select，OfficeScene 据此跳转对应工位 */
+const emit = defineEmits(['select'])
+
 /* 绘制名牌贴图 */
 function createNameplateTexture(text) {
   const canvas = document.createElement('canvas')
@@ -47,7 +50,8 @@ const plateTexture = computed(() => createNameplateTexture(props.text))
 
 <template>
   <!-- 扁平名牌，平躺于地面、文字朝上（MeshBasicMaterial 保证清晰可读） -->
-  <TresMesh :position="position" :rotation="[-Math.PI / 2, 0, 0]" receive-shadow>
+  <!-- @click：点击名牌进入对应工位（TresJS 射线点击） -->
+  <TresMesh :position="position" :rotation="[-Math.PI / 2, 0, 0]" receive-shadow @click="emit('select')">
     <TresPlaneGeometry :args="[1.1, 0.44]" />
     <TresMeshBasicMaterial :map="plateTexture" />
   </TresMesh>

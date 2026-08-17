@@ -65,7 +65,7 @@ onMounted(() => {
 
       <!-- 操作提示：场景就绪后浮现，数秒自动淡出 -->
       <Transition name="fade">
-        <div v-if="showHint" class="scene-hint">🖱️ 拖动旋转 · 滚轮缩放 · 点击小人进入工位</div>
+        <div v-if="showHint" class="scene-hint">🖱️ 拖动旋转 · 滚轮缩放 · 点击工位进入</div>
       </Transition>
     </template>
   </div>

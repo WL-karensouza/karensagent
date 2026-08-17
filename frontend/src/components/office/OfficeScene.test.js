@@ -1,7 +1,6 @@
 /* ═══════════════════════════════════════════
    OfficeScene 测试
-   验证场景组合根组件渲染两个工位名牌 + 会谈调度链路
-   （walkTo 走向中央 → 3 轮对话 → 回工位坐下）
+   验证场景组合根组件渲染两个工位名牌 + 点击名牌跳转（go-agent）
    mock @tresjs/core（TresCanvas 用简单渲染函数 stub）
    ═══════════════════════════════════════════ */
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest'
@@ -59,48 +58,28 @@ describe('OfficeScene', () => {
     expect(wrapper.text()).toContain('股票分析')
   })
 
-  it('会谈调度：定时触发 walkTo 走向中央，3 轮后回工位并坐下', () => {
-    // F2：用假时钟驱动调度，workers stub 暴露 walkTo/sitDown
-    // stub 的 walkTo 同步触发到达回调，模拟"走回工位后坐下"链路
-    vi.useFakeTimers()
+  it('点击名牌 → emit go-agent（点击进工位）', async () => {
     const wrapper = mount(OfficeScene, {
       global: {
         stubs: {
-          OfficeNameplate: { props: ['text'], template: '<div>{{ text }}</div>' },
-          OfficeWorker: {
-            props: ['position', 'workerId'],
-            setup() {
-              const walkTo = vi.fn((_x, _z, cb) => cb?.())
-              const sitDown = vi.fn()
-              return { walkTo, sitDown }
-            },
-            template: '<div />',
-          },
-          CharacterBubble: {
-            setup() { return { show: vi.fn() } },
-            template: '<div />',
+          OfficeNameplate: {
+            name: 'OfficeNameplate',
+            props: ['text'],
+            emits: ['select'],
+            template: '<div>{{ text }}</div>',
           },
         },
       },
     })
-    // 模板 ref 收集的工人实例
-    const aiNews = wrapper.vm.$refs.ai_news
-    const stock = wrapper.vm.$refs.stock
-    expect(aiNews).toBeTruthy()
-    expect(stock).toBeTruthy()
+    const plates = wrapper.findAllComponents({ name: 'OfficeNameplate' })
+    expect(plates).toHaveLength(2)
 
-    // 4s 后首轮会谈：两人走向中央会谈区
-    vi.advanceTimersByTime(4000)
-    expect(aiNews.walkTo).toHaveBeenCalledWith(0, -0.5)
-    expect(stock.walkTo).toHaveBeenCalledWith(1.2, -0.5)
+    // 点击 AI 前沿名牌 → 跳转 ai_news
+    await plates.find((c) => c.props('text') === 'AI 前沿').vm.$emit('select')
+    expect(wrapper.emitted('go-agent')).toEqual([['ai_news']])
 
-    // 3 轮对话（每轮 2s）：6s 后会谈结束 → 各自走回工位，到达回调触发坐下
-    vi.advanceTimersByTime(6000)
-    expect(aiNews.walkTo).toHaveBeenCalledWith(-3, -2, expect.any(Function))
-    expect(stock.walkTo).toHaveBeenCalledWith(3, -2, expect.any(Function))
-    expect(aiNews.sitDown).toHaveBeenCalledTimes(1)
-    expect(stock.sitDown).toHaveBeenCalledTimes(1)
-
-    wrapper.unmount()
+    // 点击股票分析名牌 → 跳转 stock
+    await plates.find((c) => c.props('text') === '股票分析').vm.$emit('select')
+    expect(wrapper.emitted('go-agent')).toEqual([['ai_news'], ['stock']])
   })
 })
