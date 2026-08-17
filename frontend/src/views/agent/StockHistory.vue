@@ -44,6 +44,7 @@ function clearFilters() {
 }
 
 function goToPage(p) {
+  if (p === page.value) return
   page.value = p
   loadData()
 }
@@ -52,6 +53,22 @@ function goToPage(p) {
 const totalPages = computed(() =>
   Math.max(1, Math.ceil(store.historyReportsTotal / pageSize))
 )
+
+/* ── 页码截断（页数多时用省略号，参考 Figma Pagination 77:2197） ── */
+const pageItems = computed(() => {
+  const total = totalPages.value
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1)
+  const set = new Set([1, 2, 3, total - 1, total, page.value - 1, page.value, page.value + 1])
+  const arr = [...set].filter(p => p >= 1 && p <= total).sort((a, b) => a - b)
+  const result = []
+  let prev = 0
+  for (const p of arr) {
+    if (p - prev > 1) result.push('…')
+    result.push(p)
+    prev = p
+  }
+  return result
+})
 
 /* ── 导航 ── */
 function goReport(id) {
@@ -215,23 +232,31 @@ onUnmounted(() => { clearTimeout(debounceTimer) })
             :disabled="page <= 1"
             @click="goToPage(page - 1)"
             aria-label="上一页"
-          ><span>&#8249;</span></button>
+          >
+            <svg viewBox="0 0 9.33 9.33" width="9" height="9" fill="none"><path d="M4.67 9.33 L0 4.67 L4.67 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Previous</span>
+          </button>
           <div class="page-nums">
-            <button
-              v-for="p in totalPages"
-              :key="p"
-              class="page-num"
-              :class="{ active: p === page }"
-              @click="goToPage(p)"
-            >{{ p }}</button>
+            <template v-for="(item, i) in pageItems">
+              <span v-if="item === '…'" :key="'gap' + i" class="page-gap">…</span>
+              <button
+                v-else
+                :key="'num' + i"
+                class="page-num"
+                :class="{ active: item === page }"
+                @click="goToPage(item)"
+              >{{ item }}</button>
+            </template>
           </div>
-          <span class="page-info">第 {{ page }} / {{ totalPages }} 页</span>
           <button
             class="page-arrow"
             :disabled="page >= totalPages"
             @click="goToPage(page + 1)"
             aria-label="下一页"
-          ><span>&#8250;</span></button>
+          >
+            <span>Next</span>
+            <svg viewBox="0 0 9.33 9.33" width="9" height="9" fill="none"><path d="M4.67 0 L9.33 4.67 L4.67 9.33" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </div>
       </template>
     </template>
@@ -270,7 +295,6 @@ onUnmounted(() => { clearTimeout(debounceTimer) })
   --radius-sm: 3px;
   --radius-md: 5px;
   --radius-lg: 8px;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .history-page {
@@ -533,84 +557,76 @@ onUnmounted(() => { clearTimeout(debounceTimer) })
   color: var(--ink-primary);
 }
 
-/* ── 分页 ── */
+/* ── 分页（参考 Figma Pagination 77:2197） ── */
 .pagination {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 8px;
   margin-top: 40px;
 }
 .page-arrow {
-  width: 30px;
-  height: 30px;
-  border-radius: 10px;
-  border: 1px solid #1a1816;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 8px;
   background: transparent;
-  color: var(--ink-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 14px;
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
   line-height: 1;
-  transition: transform 0.2s var(--ease-out);
-  padding: 0;
+  color: var(--ink-primary);
+  cursor: pointer;
+  transition: background 0.15s ease;
 }
-.page-arrow span {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.2s var(--ease-out);
+.page-arrow svg {
+  flex-shrink: 0;
 }
 .page-arrow:hover {
-  transform: scale(1.13);
-  border-radius: 12px;
-}
-.page-arrow:hover span {
-  transform: scale(0.885);
+  background: var(--paper-muted);
 }
 .page-arrow:disabled {
-  opacity: 0.28;
+  opacity: 0.5;
   cursor: not-allowed;
-  transform: none !important;
 }
-.page-arrow:disabled:hover span {
-  transform: none !important;
+.page-arrow:disabled:hover {
+  background: transparent;
 }
 .page-nums {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 8px;
 }
-.page-num {
+.page-num,
+.page-gap {
   min-width: 32px;
   height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-md);
-  border: none;
-  background: transparent;
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.8rem;
-  color: var(--ink-secondary);
-  cursor: pointer;
-  transition: all 0.15s ease;
   padding: 0 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  color: var(--ink-primary);
+}
+.page-num {
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s ease;
 }
 .page-num:hover {
   background: var(--paper-muted);
-  color: var(--ink-primary);
 }
 .page-num.active {
   background: var(--ink-primary);
   color: var(--paper-card);
 }
-.page-info {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 0.72rem;
-  color: var(--ink-tertiary);
-  margin: 0 4px;
+.page-num.active:hover {
+  background: var(--ink-primary);
 }
 
 /* ── 空状态 ── */
