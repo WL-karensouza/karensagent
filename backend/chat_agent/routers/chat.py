@@ -65,40 +65,8 @@ async def ask(stock_code: str, req: AskRequest):
     add_message(session["id"], "user", req.question)
 
     async def gen():
-        yield _sse({"type": "thinking"})
-        # 后台线程执行问答（含工具调用），完成后流式输出
-        loop = asyncio.get_running_loop()
-        result = await loop.run_in_executor(
-            None,
-            lambda: run_qa_agent(
-                req.question, stock_code, req.stock_name or session["stock_name"],
-                report_context, [], history,
-            ),
-        )
-
-        # 问答失败：run_qa_agent 内部已吞异常并返回错误文案，
-        # 此处 emit error 事件告知前端，不流式输出、不 emit done
-        if not result["success"]:
-            yield _sse({"type": "error", "message": result["answer"]})
-            # 记录失败回复，保持历史完整（后续不 emit done）
-            add_message(session["id"], "assistant", result["answer"], None)
-            return
-
-        # 工具调用事件（前端步骤卡片）
-        for tc in result["tool_calls"]:
-            yield _sse({"type": "tool_done", "name": tc["name"],
-                        "label": tc.get("label", tc["name"]), "ok": tc["ok"]})
-
-        # 回答增量（简单按句切分模拟流式；后续可换真 token 流）
-        answer = result["answer"]
-        for chunk in _chunk_text(answer):
-            yield _sse({"type": "delta", "text": chunk})
-            await asyncio.sleep(0.02)
-
-        yield _sse({"type": "done", "full": answer})
-
-        # 记录助手消息
-        add_message(session["id"], "assistant", answer, result["tool_calls"] or None)
+        async for evt in _stream_events(session, req, stock_code, report_context, history):
+            yield _sse(evt)
 
     return StreamingResponse(
         gen(),
@@ -109,6 +77,50 @@ async def ask(stock_code: str, req: AskRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+async def _stream_events(session, req, stock_code, report_context, history):
+    """产事件 dict 的异步生成器：后台线程跑问答，主协程实时转发队列事件
+
+    - 线程内 on_event 发出 phase/tool_start/tool_done（实时）
+    - 线程结束后由主协程发 error（失败）或 delta×N + done（成功）
+    """
+    queue = asyncio.Queue()
+
+    def emit(evt):
+        queue.put_nowait(evt)  # put_nowait 线程安全
+
+    loop = asyncio.get_running_loop()
+    task = loop.run_in_executor(
+        None,
+        lambda: run_qa_agent(
+            req.question, stock_code, req.stock_name or session["stock_name"],
+            report_context, [], history, on_event=emit,
+        ),
+    )
+
+    # 实时转发线程内事件，直到线程结束且队列排空
+    while not task.done() or not queue.empty():
+        try:
+            evt = queue.get_nowait()
+        except asyncio.QueueEmpty:
+            await asyncio.sleep(0.02)
+            continue
+        yield evt
+
+    result = task.result()
+    if not result["success"]:
+        yield {"type": "error", "message": result["answer"]}
+        add_message(session["id"], "assistant", result["answer"], None)
+        return
+
+    # tool_start/tool_done 已在线程内实时发出，此处不再重发
+    answer = result["answer"]
+    for chunk in _chunk_text(answer):
+        yield {"type": "delta", "text": chunk}
+        await asyncio.sleep(0.02)
+    yield {"type": "done", "full": answer}
+    add_message(session["id"], "assistant", answer, result["tool_calls"] or None)
 
 
 def _build_report_context(report_id: int | None, stock_code: str) -> str:
