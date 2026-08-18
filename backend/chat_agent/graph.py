@@ -80,10 +80,12 @@ def _format_history(history: list[dict] | None) -> str:
     return "\n".join(lines)
 
 
-def _tool_loop(question: str, target_code: str, tool_hints: list[str]) -> tuple[list, list]:
+def _tool_loop(question: str, target_code: str, tool_hints: list[str],
+               on_event=None) -> tuple[list, list]:
     """Function Calling 循环，返回 (tool_results_text, tool_calls_records)
 
     tool_calls_records: [{name, label, ok, duration_ms}] —— 供前端步骤卡片
+    on_event: 可选回调 on_event(evt: dict)，每个工具调用前发 tool_start、后发 tool_done
     """
     tools = _build_tools_for(tool_hints)
     # 注入目标股票代码上下文（D7 跨股票提问关键）：让 LLM 能生成带交易所后缀
@@ -124,6 +126,9 @@ def _tool_loop(question: str, target_code: str, tool_hints: list[str]) -> tuple[
             ],
         })
         for tc in tool_calls:
+            if on_event is not None:
+                on_event({"type": "tool_start", "name": tc.function.name,
+                          "label": TOOL_FRIENDLY_NAMES.get(tc.function.name, tc.function.name)})
             try:
                 args = json.loads(tc.function.arguments)
             except Exception:
@@ -136,6 +141,10 @@ def _tool_loop(question: str, target_code: str, tool_hints: list[str]) -> tuple[
             t0 = _t.time()
             out = execute_tool_call(tc.function.name, args)
             dt = int((_t.time() - t0) * 1000)
+            if on_event is not None:
+                on_event({"type": "tool_done", "name": tc.function.name,
+                          "label": TOOL_FRIENDLY_NAMES.get(tc.function.name, tc.function.name),
+                          "ok": out["ok"]})
             records.append({
                 "name": tc.function.name,
                 "label": TOOL_FRIENDLY_NAMES.get(tc.function.name, tc.function.name),
@@ -197,7 +206,7 @@ def _answer(question: str, stock_code: str, stock_name: str, target_code: str,
 
 def run_qa_agent(question: str, stock_code: str, stock_name: str,
                  report_context: str, tool_hints: list[str],
-                 history: list[dict] | None = None) -> dict:
+                 history: list[dict] | None = None, on_event=None) -> dict:
     """总入口：understand → tool_loop → answer
 
     Args:
@@ -207,6 +216,7 @@ def run_qa_agent(question: str, stock_code: str, stock_name: str,
         report_context: 注入的报告结论摘要
         tool_hints: 预设工具方向（understand 失败时兜底）
         history: 最近 8 轮历史 [{role, content}]，供 answer 注入上下文
+        on_event: 可选回调 on_event(evt: dict)，阶段切换时发 phase 事件并透传工具事件
 
     Returns:
         {
@@ -218,6 +228,8 @@ def run_qa_agent(question: str, stock_code: str, stock_name: str,
         }
     """
     try:
+        if on_event is not None:
+            on_event({"type": "phase", "phase": "understand"})
         und = _understand(question, stock_code, stock_name)
         is_off_topic = und["is_off_topic"]
         needs_tools = und["needs_tools"] and not is_off_topic
@@ -227,8 +239,10 @@ def run_qa_agent(question: str, stock_code: str, stock_name: str,
         tool_results, records = "", []
         if needs_tools:
             hints = und["tool_hints"] or tool_hints
-            tool_results, records = _tool_loop(question, target_code, hints)
-
+            tool_results, records = _tool_loop(question, target_code, hints,
+                                               on_event=on_event)
+        if on_event is not None:
+            on_event({"type": "phase", "phase": "answer"})
         answer = _answer(question, stock_code, stock_name, target_code,
                          report_context, tool_results, is_off_topic, history)
         return {
