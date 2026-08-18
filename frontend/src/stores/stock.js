@@ -42,8 +42,7 @@ export const useStockStore = defineStore('stock', {
     chatMessages: [],       // [{ role, content, tool_calls }]
     chatSession: null,      // { id, stock_code, ... }
     chatAsking: false,      // 是否正在请求
-    chatThinking: false,    // 是否正在思考/查数
-    chatToolSteps: [],      // [{ id, label, status }] 工具步骤卡片
+    chatSteps: [],          // [{ type:'understand'|'tool'|'answer', label, status }] 三行思考面板
 
     /* Toast */
     toast: null,
@@ -429,8 +428,11 @@ export const useStockStore = defineStore('stock', {
     },
 
     /**
-     * 发送问答（SSE 流式），内部管理 thinking/toolSteps/chatAsking 状态。
+     * 发送问答（SSE 流式），内部管理 chatSteps/chatAsking 状态。
      * 组件只调此 action，不直接 import api（符合项目惯例）。
+     *
+     * 思考过程三行面板：onPhase(understand/answer)/onToolStart 推入 running 行，
+     * onToolDone 按 label 从后往前匹配置 done/error，首个 delta 到达即闭合清空。
      *
      * 在途 SSE 隔离：请求发出后若用户已切换到其他股票（chatSession 变化），
      * 旧请求的回调按会话归属校验丢弃，不写入 chatMessages，避免跨会话污染；
@@ -443,30 +445,32 @@ export const useStockStore = defineStore('stock', {
       const isCurrent = () => !this.chatSession || this.chatSession.stock_code === reqCode
 
       this.chatAsking = true
-      this.chatThinking = true
-      this.chatToolSteps = []
+      this.chatSteps = []
       /* created_at 为前端发送时刻，供消息行元信息展示（历史消息用后端落库时间） */
       this.chatMessages.push({ role: 'user', content: question, tool_calls: null, created_at: new Date().toISOString() })
 
-      let stepId = 0
       const controller = api.fetchChatAsk(stockCode, {
         question, report_id, stock_name,
       }, {
-        onThinking: () => { if (isCurrent()) this.chatThinking = true },
-        onToolDone: (d) => {
-          // 归属不符：丢弃（不写入步骤卡片）
+        onPhase: (d) => {
           if (!isCurrent()) return
-          this.chatThinking = false
-          stepId++
-          this.chatToolSteps.push({
-            id: stepId,
-            label: d.label || d.name,
-            status: d.ok ? 'done' : 'error',
-          })
+          if (d.phase === 'understand') this.chatSteps.push({ type: 'understand', label: '理解问题', status: 'running' })
+          else if (d.phase === 'answer') this.chatSteps.push({ type: 'answer', label: '生成回答', status: 'running' })
+        },
+        onToolStart: (d) => {
+          if (!isCurrent()) return
+          this.chatSteps.push({ type: 'tool', label: d.label || d.name, status: 'running' })
+        },
+        onToolDone: (d) => {
+          if (!isCurrent()) return
+          const label = d.label || d.name
+          // 从后往前匹配同 label 的进行中工具行，更新为完成/失败
+          const step = [...this.chatSteps].reverse().find(s => s.type === 'tool' && s.label === label)
+          if (step) step.status = d.ok ? 'done' : 'error'
         },
         onDelta: (d) => {
-          // 归属不符：丢弃增量，避免旧回答拼进新会话
           if (!isCurrent()) return
+          this.chatSteps = []  // 首个 delta：思考过程闭合，卡片消失
           const last = this.chatMessages[this.chatMessages.length - 1]
           if (last && last.role === 'assistant') last.content += d.text
           else this.chatMessages.push({ role: 'assistant', content: d.text, tool_calls: null, created_at: new Date().toISOString() })
@@ -478,20 +482,17 @@ export const useStockStore = defineStore('stock', {
             else this.chatMessages.push({ role: 'assistant', content: d.full, tool_calls: null, created_at: new Date().toISOString() })
           }
           // 无论归属如何都重置状态，避免旧请求卡死新会话的输入
-          this.chatThinking = false
-          this.chatToolSteps = []
+          this.chatSteps = []
           this.chatAsking = false
         },
         onError: (e) => {
           if (isCurrent()) this.showToast(e.message || '回答失败')
-          this.chatThinking = false
-          this.chatToolSteps = []
+          this.chatSteps = []
           this.chatAsking = false
         },
         /* 流结束兜底：SSE 干净关闭但未 emit done/error 时，防止 chatAsking 永久卡住 */
         onStreamEnd: () => {
-          this.chatThinking = false
-          this.chatToolSteps = []
+          this.chatSteps = []
           this.chatAsking = false
         },
       })
