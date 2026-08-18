@@ -87,7 +87,7 @@ class TestRunQaAgentEvents:
         tl.assert_not_called()
 
     def test_off_topic_still_emits_understand(self):
-        """无关问题：至少发出 understand 阶段事件，answer 阶段事件由主流程决定"""
+        """无关问题：只发 understand 阶段事件，不发 answer（边界态 B1：②③ 不出现）"""
         events = []
 
         with patch.object(graph, "_understand", return_value={
@@ -100,6 +100,7 @@ class TestRunQaAgentEvents:
                                "报告", [], None, on_event=events.append)
 
         assert events[0] == {"type": "phase", "phase": "understand"}
+        assert {"type": "phase", "phase": "answer"} not in events
 
     def test_on_event_none_keeps_old_behavior(self):
         """不传 on_event：事件插桩无副作用，返回结构不变"""

@@ -241,7 +241,7 @@ def run_qa_agent(question: str, stock_code: str, stock_name: str,
             hints = und["tool_hints"] or tool_hints
             tool_results, records = _tool_loop(question, target_code, hints,
                                                on_event=on_event)
-        if on_event is not None:
+        if on_event is not None and not is_off_topic:
             on_event({"type": "phase", "phase": "answer"})
         answer = _answer(question, stock_code, stock_name, target_code,
                          report_context, tool_results, is_off_topic, history)
