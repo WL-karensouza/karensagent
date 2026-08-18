@@ -2,7 +2,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useStockStore } from '../../stores/stock.js'
-import AiStepsCard from './AiStepsCard.vue'
+import ThinkingStepsCard from './ThinkingStepsCard.vue'
 import ChatMessageItem from './ChatMessageItem.vue'
 
 const store = useStockStore()
@@ -14,8 +14,6 @@ const stockName = computed(() => report.value?.stock_name || '')
 
 /* 历史消息渲染（单条消息结构下沉到 ChatMessageItem） */
 const messages = computed(() => store.chatMessages)
-const thinking = computed(() => store.chatThinking)
-const toolSteps = computed(() => store.chatToolSteps)
 
 async function send() {
   const q = input.value.trim()
@@ -56,14 +54,8 @@ onMounted(() => {
       <!-- 消息气泡：单条消息组件（头像 + 元信息行 + 气泡 + 步骤卡片） -->
       <ChatMessageItem v-for="(m, i) in messages" :key="i" :message="m" />
 
-      <!-- 思考中 -->
-      <div v-if="thinking" class="ai-thinking">
-        <span class="ai-dots"><i></i><i></i><i></i></span>
-        <span>Karens 正在理解你的问题…</span>
-      </div>
-
-      <!-- 工具步骤卡片（实时） -->
-      <AiStepsCard v-if="toolSteps.length" :steps="toolSteps" />
+      <!-- 思考过程面板（三行：理解/工具/生成），首个 delta 时 chatSteps 清空即卸载 -->
+      <ThinkingStepsCard v-if="store.chatSteps.length" :steps="store.chatSteps" />
     </div>
 
     <!-- 输入区（钉底；发送中禁用防重复提交） -->
@@ -114,22 +106,6 @@ onMounted(() => {
   font-size: 0.82rem;
   line-height: 1.7;
   padding: 0 12px;
-}
-/* 思考中提示：浅色 + 呼吸三点 */
-.ai-thinking {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 0.76rem; color: var(--sent-mid);
-}
-.ai-dots { display: flex; gap: 6px; }
-.ai-dots i {
-  width: 5px; height: 5px; border-radius: 50%; background: var(--sent-soft);
-  animation: ai-breathe 1.8s ease-in-out infinite;
-}
-.ai-dots i:nth-child(2) { animation-delay: 0.3s; }
-.ai-dots i:nth-child(3) { animation-delay: 0.6s; }
-@keyframes ai-breathe {
-  0%, 100% { opacity: 0.3; transform: scale(0.85); }
-  50% { opacity: 1; transform: scale(1); }
 }
 /* 输入区钉底 */
 .ai-input {
