@@ -200,7 +200,9 @@ def _answer(question: str, stock_code: str, stock_name: str, target_code: str,
     resp = _get_client().chat.completions.create(
         model=LLM_MODEL_ID,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=4096,
+        # max_tokens 放大（2026-08-19）：工具结果累积可达 1.3 万字符，与 thinking
+        # 思考共用输出预算，4096 偶发耗尽导致 content 为空（回答只剩免责声明）
+        max_tokens=16000,
         extra_body={"thinking": {"type": "enabled"}},
         temperature=1.0,
     )
