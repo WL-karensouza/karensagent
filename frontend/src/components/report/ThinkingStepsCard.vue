@@ -23,13 +23,14 @@ function iconOf(status) {
 </template>
 
 <style scoped>
-/* 思考过程面板：浅色卡片，行间紧凑，整体随内容微缩，首个 delta 时被父组件卸载 */
+/* 思考过程面板：浅色卡片，行间紧凑，高度随步骤数自适应；首个 delta 时由父组件卸载 */
 .thinking-steps {
+  /* 防止会话历史溢出时被 flex 压缩（原默认 flex-shrink:1 会把卡片压成一行高、裁掉其余步骤） */
+  flex-shrink: 0;
   display: flex; flex-direction: column; gap: 5px;
   background: var(--sent-bg); border: 1px solid var(--border-color);
   border-radius: var(--radius-md); padding: 8px 12px;
-  transition: max-height 0.25s ease, opacity 0.25s ease, padding 0.25s ease;
-  overflow: hidden;
+  box-sizing: border-box;
 }
 /* 行：状态图标 + 文案，浅灰小字 */
 .ts-row {
