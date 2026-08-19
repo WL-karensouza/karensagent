@@ -40,7 +40,7 @@ class TestRunQaAgentEvents:
             return {"is_off_topic": False, "stock_code": stock_code,
                     "needs_tools": True, "tool_hints": ["财务"]}
 
-        def fake_tool_loop(question, target_code, hints, on_event=None):
+        def fake_tool_loop(question, target_code, hints, on_event=None, stock_name=""):
             on_event({"type": "tool_start", "name": "get_stock_financials",
                       "label": "核对财务数据"})
             on_event({"type": "tool_done", "name": "get_stock_financials",
@@ -165,3 +165,37 @@ class TestToolLoopEvents:
         assert events[1] == {"type": "tool_done", "name": "search_news",
                              "label": "查询近期新闻", "ok": False}
         assert records[0]["arguments"] == {"query": "x"}
+
+    def test_context_contains_stock_name(self, monkeypatch):
+        """_tool_loop 的 context 应含股票名称，让 LLM 生成 query 时能带上证券实体
+
+        实证（2026-08-19）：query 缺证券实体名导致财务查询"假成功"，本测试确保
+        context 注入目标股票名称，LLM 得以在 query 中携带实体名。
+        """
+        resp = _make_resp("结束")
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = resp
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        monkeypatch.setattr(graph, "get_tool_descriptions", lambda server: [])
+
+        graph._tool_loop("财报分析", "301301", [], on_event=None, stock_name="川宁生物")
+
+        sent = fake_client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+        assert "川宁生物" in sent
+        assert "301301" in sent
+
+
+class TestAnswerFallback:
+    """_answer 空 content 兜底"""
+
+    def test_empty_content_returns_friendly_hint(self, monkeypatch):
+        """LLM 返回空 content 时 answer 应为兜底文案而非空（防只显示免责声明）"""
+        resp = _make_resp("")
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = resp
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+
+        answer = graph._answer("财报分析", "301301", "川宁生物", "301301",
+                               "报告", "工具结果", False)
+        assert "抱歉" in answer
+        assert "不构成投资建议" in answer  # DISCLAIMER 仍在

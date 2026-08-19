@@ -102,3 +102,23 @@ def test_extract_text_empty_data_fallback():
     out = extract_text(result)
     # 现状：data is None → return raw_text；保持该兜底不崩即可
     assert isinstance(out, str)
+
+
+def test_extract_text_flags_no_data_answer():
+    """iFinD 成功包装下的业务失败应答（data.answer="未返回有效结果"）应转 [无数据]
+
+    实证（2026-08-19）：query 缺证券实体名时 iFinD 返回
+    {"code":1,"msg":"success","data":"{\\"answer\\":\\"抱歉，本次数据查询未返回有效结果...\\"}"}
+    内层 code=1 被 extract_text 判为成功，业务错误文本被当正常 answer 返回 → 假成功。
+    """
+    import json
+    from stock_agent.skill import extract_text
+
+    inner = {"code": 1, "msg": "success",
+             "data": json.dumps({"answer": "抱歉，本次数据查询未返回有效结果"}, ensure_ascii=False)}
+    result = {"ok": True, "data": {"result": {"content": [
+        {"type": "text", "text": json.dumps(inner, ensure_ascii=False)}
+    ]}}}
+    out = extract_text(result)
+    assert out.startswith("[无数据]"), f"业务失败应答未转换: {out}"
+    assert "未返回有效结果" in out

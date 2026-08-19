@@ -81,16 +81,19 @@ def _format_history(history: list[dict] | None) -> str:
 
 
 def _tool_loop(question: str, target_code: str, tool_hints: list[str],
-               on_event=None) -> tuple[list, list]:
+               on_event=None, stock_name: str = "") -> tuple[list, list]:
     """Function Calling 循环，返回 (tool_results_text, tool_calls_records)
 
     tool_calls_records: [{name, label, ok, duration_ms, arguments}] —— 供前端步骤卡片 + 落库诊断
     on_event: 可选回调 on_event(evt: dict)，每个工具调用前发 tool_start、后发 tool_done
+    stock_name: 会话股票名称，注入 context 让 LLM 的 query 能携带证券实体名
     """
     tools = _build_tools_for(tool_hints)
-    # 注入目标股票代码上下文（D7 跨股票提问关键）：让 LLM 能生成带交易所后缀
-    # 的 symbols（如 000858.SZ），结构化工具（如 highfreq_quotes）才能查对股票
-    context_question = f"当前对话股票目标：{target_code}。问题：{question}"
+    # 注入目标股票代码 + 名称（D7 跨股票提问 + 2026-08-19 根因修复）：
+    # - 代码让 LLM 能生成带交易所后缀的 symbols（如 000858.SZ）
+    # - 名称让 LLM 的自然语言 query 带上证券实体（如"川宁生物…"），否则
+    #   get_stock_financials 等工具会因缺证券实体返回"未返回有效结果"
+    context_question = f"当前对话股票目标：{target_code}（{stock_name}）。问题：{question}"
     messages = [{"role": "user", "content": context_question}]
     results = []
     records = []
@@ -202,6 +205,10 @@ def _answer(question: str, stock_code: str, stock_name: str, target_code: str,
         temperature=1.0,
     )
     answer = resp.choices[0].message.content or ""
+    # 兜底（2026-08-19）：模型思考完成但未生成正文（如工具结果全部失败时），
+    # 给友好提示而非只拼免责声明导致"回答只有免责声明"
+    if not answer.strip():
+        answer = "抱歉，我未能获取到足够的实时数据来完成这次分析，请换个问法或稍后再试。"
     return answer + DISCLAIMER
 
 
@@ -241,7 +248,7 @@ def run_qa_agent(question: str, stock_code: str, stock_name: str,
         if needs_tools:
             hints = und["tool_hints"] or tool_hints
             tool_results, records = _tool_loop(question, target_code, hints,
-                                               on_event=on_event)
+                                               on_event=on_event, stock_name=stock_name)
         if on_event is not None and not is_off_topic:
             on_event({"type": "phase", "phase": "answer"})
         answer = _answer(question, stock_code, stock_name, target_code,

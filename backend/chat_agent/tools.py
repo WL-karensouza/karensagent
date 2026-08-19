@@ -109,6 +109,7 @@ def execute_tool_call(tool_name: str, arguments: dict) -> dict:
 
     Returns:
         {"ok": bool, "text": str}   # text 为提取后的业务文本，可直接喂回 LLM
+        ok 反映数据有效性：仅调用层成功但文本是 [无数据]/[错误] 时置 False（防假成功）
     """
     server = TOOL_SERVER_MAP.get(tool_name)
     if server is None:
@@ -126,7 +127,11 @@ def execute_tool_call(tool_name: str, arguments: dict) -> dict:
     try:
         result = call_skill(server, tool_name, params)
         text = extract_text(result)
-        return {"ok": result.get("ok", False), "text": text}
+        # ok 判定 = 调用层成功 且 提取文本不是无数据/错误。防止"假成功"：
+        # iFinD 内层 code=1 成功包装但 answer 是"未返回有效结果"类业务失败时，
+        # extract_text 已转 [无数据]，此处置 ok=False，避免误导 LLM 反复重试。
+        ok = bool(result.get("ok", False)) and not text.startswith(("[无数据]", "[错误]"))
+        return {"ok": ok, "text": text}
     except Exception as e:
         return {"ok": False, "text": f"[错误] {type(e).__name__}: {str(e)}"}
 

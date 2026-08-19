@@ -10,6 +10,16 @@ def _is_out_of_scope_answer(answer) -> bool:
     return isinstance(answer, str) and "不属于" in answer and "数据范围" in answer
 
 
+def _is_no_data_answer(answer) -> bool:
+    """iFinD 成功包装下的业务失败应答判定（data.answer 为"未返回有效结果"类提示）
+
+    实证（2026-08-19）：query 缺证券实体时返回内层 code=1 success 但 answer 为
+    "抱歉，本次数据查询未返回有效结果"——业务失败藏在成功包装里，若按正常数据回填
+    会造成"假成功"：LLM 被误导反复重试同一工具。需转 [无数据] 并置 ok=False。
+    """
+    return isinstance(answer, str) and "未返回有效结果" in answer
+
+
 def _answer_of(data) -> str | None:
     """iFinD 应答文本提取：dict 含 answer 键即视为应答（dict/字符串包裹两种形态共用）"""
     if isinstance(data, dict) and "answer" in data:
@@ -67,8 +77,8 @@ def extract_text(result: dict) -> str:
     if isinstance(inner_data, dict):
         answer = _answer_of(inner_data)
         if answer is not None:
-            # 数据范围外应答（如查港股走了 A 股服务）→ 标记为无数据
-            if _is_out_of_scope_answer(answer):
+            # 数据范围外应答 / 成功包装下的业务失败 → 标记为无数据
+            if _is_out_of_scope_answer(answer) or _is_no_data_answer(answer):
                 return f"[无数据] {answer}"
             return answer
         if "data" in inner_data:
@@ -92,7 +102,7 @@ def extract_text(result: dict) -> str:
             # 不识别会误分类成 json，截断港股名称提取链路（2026-08-07 实证根因）
             answer = _answer_of(table_data)
             if answer is not None:
-                if _is_out_of_scope_answer(answer):
+                if _is_out_of_scope_answer(answer) or _is_no_data_answer(answer):
                     return f"[无数据] {answer}"
                 return answer
             if isinstance(table_data, dict) and "tables" in table_data:
