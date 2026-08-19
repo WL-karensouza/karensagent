@@ -87,8 +87,25 @@ def _format_history(history: list[dict] | None) -> str:
     return "\n".join(lines)
 
 
+def _parse_line(text: str, label: str) -> str | None:
+    """在文本中找 label 所在行，返回冒号后的值；找不到返回 None
+
+    逐行前缀匹配（不依赖行序/完整结构），兼容全角：与半角: 冒号。
+    """
+    for line in text.splitlines():
+        if label in line:
+            for sep in ("：", ":"):
+                if sep in line:
+                    return line.split(sep, 1)[-1].strip()
+    return None
+
+
 def understand_node(state: QaState, writer: StreamWriter) -> dict:
-    """意图理解节点：发 phase understand 事件，产出意图分析结果"""
+    """意图理解节点：发 phase understand 事件，产出意图分析结果
+
+    宽松文本行解析（2026-08-19 改造，对齐 ai_news 风格）：LLM 按"标签：值"
+    逐行输出，代码逐行前缀匹配 + split 提取；字段级兜底，不依赖 JSON 结构。
+    """
     from .prompts import UNDERSTAND_PROMPT
 
     writer({"type": "phase", "phase": "understand"})
@@ -104,17 +121,26 @@ def understand_node(state: QaState, writer: StreamWriter) -> dict:
             extra_body={"thinking": {"type": "disabled"}},  # 意图分析求快
         )
         text = resp.choices[0].message.content or ""
-        # 剥离 ```json 包裹（先处理 ```json 再处理 ```，避免 json 前缀残留）
-        if "```json" in text:
-            text = text.split("```json", 1)[1].split("```", 1)[0]
-        elif "```" in text:
-            text = text.split("```", 1)[1].split("```", 1)[0]
-        data = json.loads(text.strip())
+        # 宽松文本行解析：字段级兜底，单字段缺失不影响其他字段
+        is_off_topic = _parse_line(text, "是否股票相关") in ("是", "true", "True")
+        needs_tools = _parse_line(text, "需要实时查数") in ("是", "true", "True")
+
+        code_text = _parse_line(text, "目标股票代码")
+        target_code = state["stock_code"]
+        if code_text and "当前股票" not in code_text:
+            target_code = code_text
+
+        hints_text = _parse_line(text, "数据方向") or ""
+        # 兼容顿号/逗号分隔，过滤空项与"无"
+        tool_hints = [
+            h.strip() for h in hints_text.replace("、", ",").split(",")
+            if h.strip() and h.strip() != "无"
+        ]
         return {
-            "is_off_topic": bool(data.get("is_off_topic", False)),
-            "needs_tools": bool(data.get("needs_tools", False)),
-            "target_code": data.get("stock_code") or state["stock_code"],
-            "tool_hints": data.get("tool_hints", []),
+            "is_off_topic": is_off_topic,
+            "needs_tools": needs_tools,
+            "target_code": target_code,
+            "tool_hints": tool_hints,
         }
     except Exception as e:
         print(f"[chat_agent] [警告] 意图理解失败，默认按股票相关处理: {e}")
