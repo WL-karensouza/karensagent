@@ -10,8 +10,7 @@ from database import get_stock_report_by_id
 from ..database import (
     get_or_create_session, update_session_report, add_message, list_messages,
 )
-from ..graph import run_qa_agent
-from ..tools import TOOL_FRIENDLY_NAMES
+from ..graph import build_initial_state, qa_workflow
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -80,47 +79,43 @@ async def ask(stock_code: str, req: AskRequest):
 
 
 async def _stream_events(session, req, stock_code, report_context, history):
-    """产事件 dict 的异步生成器：后台线程跑问答，主协程实时转发队列事件
+    """产事件 dict 的异步生成器：异步驱动 LangGraph 图
 
-    - 线程内 on_event 发出 phase/tool_start/tool_done（实时）
-    - 线程结束后由主协程发 error（失败）或 delta×N + done（成功）
+    - 节点内 StreamWriter 发 phase/tool_start/tool_done（stream_mode="custom" 实时透传）
+    - 图结束后由本函数发 delta×N + done（成功）或 error（图异常）
     """
-    queue = asyncio.Queue()
-
-    def emit(evt):
-        queue.put_nowait(evt)  # put_nowait 线程安全
-
-    loop = asyncio.get_running_loop()
-    task = loop.run_in_executor(
-        None,
-        lambda: run_qa_agent(
-            req.question, stock_code, req.stock_name or session["stock_name"],
-            report_context, [], history, on_event=emit,
-        ),
+    initial = build_initial_state(
+        req.question, stock_code, req.stock_name or session["stock_name"],
+        report_context, [], history,
     )
-
-    # 实时转发线程内事件，直到线程结束且队列排空
-    while not task.done() or not queue.empty():
-        try:
-            evt = queue.get_nowait()
-        except asyncio.QueueEmpty:
-            await asyncio.sleep(0.02)
-            continue
-        yield evt
-
-    result = task.result()
-    if not result["success"]:
-        yield {"type": "error", "message": result["answer"]}
-        add_message(session["id"], "assistant", result["answer"], None)
+    final_answer = None
+    tool_calls = []
+    try:
+        async for mode, chunk in qa_workflow().astream(
+                initial, stream_mode=["custom", "updates"]):
+            if mode == "custom":
+                yield chunk            # phase / tool_start / tool_done 原样透传
+            else:                      # updates：每节点结束后的 state 更新
+                for node, upd in chunk.items():
+                    if node == "answer" and upd.get("answer_text"):
+                        final_answer = upd["answer_text"]
+                    if node == "execute_tools":
+                        tool_calls = upd.get("tool_calls", tool_calls)
+    except Exception as e:
+        print(f"[chat_agent] [错误] 问答图执行失败: {e}")
+        msg = f"karens 暂时遇到问题，请稍后重试。（{type(e).__name__}）"
+        yield {"type": "error", "message": msg}
+        add_message(session["id"], "assistant", msg, None)
         return
 
-    # tool_start/tool_done 已在线程内实时发出，此处不再重发
-    answer = result["answer"]
-    for chunk in _chunk_text(answer):
+    if not final_answer:
+        final_answer = "抱歉，我未能获取到足够的实时数据来完成这次分析，请换个问法或稍后再试。"
+
+    for chunk in _chunk_text(final_answer):
         yield {"type": "delta", "text": chunk}
         await asyncio.sleep(0.02)
-    yield {"type": "done", "full": answer}
-    add_message(session["id"], "assistant", answer, result["tool_calls"] or None)
+    yield {"type": "done", "full": final_answer}
+    add_message(session["id"], "assistant", final_answer, tool_calls or None)
 
 
 def _build_report_context(report_id: int | None, stock_code: str) -> str:

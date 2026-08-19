@@ -1,8 +1,33 @@
-"""chat_agent.routers.chat 队列桥接测试"""
+"""chat_agent.routers.chat 异步驱动 LangGraph 测试"""
 import asyncio
-from unittest.mock import patch
+import json
+from unittest.mock import MagicMock, patch
 
+from chat_agent import graph
 from chat_agent.routers import chat
+
+
+def _make_resp(content, tool_calls=None):
+    msg = MagicMock()
+    msg.content = content
+    msg.reasoning_content = None
+    msg.tool_calls = tool_calls
+    choice = MagicMock()
+    choice.message = msg
+    resp = MagicMock()
+    resp.choices = [choice]
+    return resp
+
+
+def _make_tool_call(name, arguments):
+    tc = MagicMock()
+    tc.id = "call_1"
+    tc.type = "function"
+    fn = MagicMock()
+    fn.name = name
+    fn.arguments = json.dumps(arguments)
+    tc.function = fn
+    return tc
 
 
 def _collect(events_async_gen):
@@ -13,61 +38,75 @@ def _collect(events_async_gen):
 
 
 class TestStreamEvents:
-    """_stream_events：线程内事件实时转发 + 线程结束后的 delta/done/error"""
+    """_stream_events：异步驱动 LangGraph，custom 事件透传 + 结尾 delta/done/error"""
 
-    def test_success_emits_events_in_order(self):
-        def fake_run_qa(question, stock_code, stock_name, report_context,
-                        tool_hints, history, on_event=None):
-            on_event({"type": "phase", "phase": "understand"})
-            on_event({"type": "tool_start", "name": "search_news",
-                      "label": "查询近期新闻"})
-            on_event({"type": "tool_done", "name": "search_news",
-                      "label": "查询近期新闻", "ok": True})
-            return {"answer": "五粮液近期新闻显示……", "is_off_topic": False,
-                    "tool_calls": [{"name": "search_news", "label": "查询近期新闻",
-                                    "ok": True, "duration_ms": 50}],
-                    "success": True, "error": ""}
+    def test_success_emits_events_in_order(self, monkeypatch):
+        """真图 + mock LLM：工具事件实时转发 + delta/done"""
+        responses = [
+            _make_resp('{"is_off_topic": false, "needs_tools": true, "tool_hints": []}'),
+            _make_resp("", tool_calls=[_make_tool_call("search_news", {"query": "五粮液新闻"})]),
+            _make_resp("收尾"),
+            _make_resp("五粮液近期新闻显示……"),
+        ]
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = responses
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        monkeypatch.setattr(graph, "execute_tool_call",
+                            lambda name, args: {"ok": True, "text": "新闻数据"})
+        monkeypatch.setattr(graph, "get_tool_descriptions",
+                            lambda server: [{"name": "search_news",
+                                             "description": "新闻", "inputSchema": {}}])
 
         session = {"id": 1, "stock_name": "五粮液"}
         req = chat.AskRequest(question="最近有什么新闻", report_id=None, stock_name="")
-        with patch.object(chat, "run_qa_agent", side_effect=fake_run_qa), \
-             patch.object(chat, "add_message", lambda *a, **k: None):
+        with patch.object(chat, "add_message", MagicMock()) as add_msg:
             events = _collect(chat._stream_events(session, req, "000858", "报告", []))
 
         types = [e["type"] for e in events]
-        assert types[0:3] == ["phase", "tool_start", "tool_done"]
         assert types[0] == "phase" and events[0]["phase"] == "understand"
-        assert types[-1] == "done"
+        assert "tool_start" in types and "tool_done" in types
         assert "delta" in types
-        assert all(t not in ("error",) for t in types)
+        assert types[-1] == "done"
+        assert all(t != "error" for t in types)
+        assert add_msg.called
+        # 落库参数：assistant + answer + tool_calls
+        args, _ = add_msg.call_args
+        assert args[1] == "assistant"
+        assert args[3][0]["name"] == "search_news"
 
-    def test_failure_emits_error_and_stops(self):
-        def fake_run_qa(question, stock_code, stock_name, report_context,
-                        tool_hints, history, on_event=None):
-            return {"answer": "karens 暂时遇到问题，请稍后重试。（boom）",
-                    "is_off_topic": False, "tool_calls": [],
-                    "success": False, "error": "boom"}
+    def test_failure_emits_error_and_stops(self, monkeypatch):
+        """图执行异常（answer 节点 LLM 抛错）：error 事件 + 落库失败消息"""
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = Exception("boom")
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
 
         session = {"id": 1, "stock_name": "五粮液"}
         req = chat.AskRequest(question="问题", report_id=None, stock_name="")
-        with patch.object(chat, "run_qa_agent", side_effect=fake_run_qa), \
-             patch.object(chat, "add_message", lambda *a, **k: None):
+        with patch.object(chat, "add_message", MagicMock()) as add_msg:
             events = _collect(chat._stream_events(session, req, "000858", "报告", []))
 
-        assert events == [{"type": "error", "message": "karens 暂时遇到问题，请稍后重试。（boom）"}]
+        # understand 节点会吞掉首轮 LLM 异常（默认按股票相关处理），error 由 answer 节点抛出，位于事件末尾
+        assert events[-1]["type"] == "error"
+        assert "Exception" in events[-1]["message"]
+        assert add_msg.called
 
-    def test_phase_events_forwarded_realtime(self):
-        """即使 run_qa_agent 不发工具事件，成功路径也能产出 answer 阶段"""
-        def fake_run_qa(question, stock_code, stock_name, report_context,
-                        tool_hints, history, on_event=None):
-            return {"answer": "纯报告解读", "is_off_topic": False,
-                    "tool_calls": [], "success": True, "error": ""}
+    def test_no_tools_produces_delta_and_done(self, monkeypatch):
+        """纯报告解读：两 phase + delta + done"""
+        responses = [
+            _make_resp('{"is_off_topic": false, "needs_tools": false}'),
+            _make_resp("纯报告解读"),
+        ]
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = responses
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
 
         session = {"id": 1, "stock_name": "五粮液"}
         req = chat.AskRequest(question="报告说了什么", report_id=None, stock_name="")
-        with patch.object(chat, "run_qa_agent", side_effect=fake_run_qa), \
-             patch.object(chat, "add_message", lambda *a, **k: None):
+        with patch.object(chat, "add_message", lambda *a, **k: None):
             events = _collect(chat._stream_events(session, req, "000858", "报告", []))
 
-        assert events[-1]["type"] == "done"
-        assert events[-1]["full"] == "纯报告解读"
+        types = [e["type"] for e in events]
+        assert types[:2] == ["phase", "phase"]
+        assert types[-1] == "done"
+        assert events[-1]["full"].startswith("纯报告解读")
+        assert "delta" in types
