@@ -1,4 +1,4 @@
-"""chat_agent.graph 事件插桩测试"""
+"""chat_agent.graph 节点层测试（LangGraph 迁移 Task 1）"""
 import json
 from unittest.mock import MagicMock, patch
 
@@ -29,173 +29,176 @@ def _make_tool_call(name, arguments):
     return tc
 
 
-class TestRunQaAgentEvents:
-    """run_qa_agent 插桩：phase 事件按序发出、透传工具事件"""
+class TestBuildInitialState:
+    """build_initial_state：初始状态字段正确"""
 
-    def test_emits_phase_events_with_tools(self):
-        """带工具问答：事件序 = understand → tool_start → tool_done → answer"""
-        events = []
-
-        def fake_understand(question, stock_code, stock_name):
-            return {"is_off_topic": False, "stock_code": stock_code,
-                    "needs_tools": True, "tool_hints": ["财务"]}
-
-        def fake_tool_loop(question, target_code, hints, on_event=None, stock_name=""):
-            on_event({"type": "tool_start", "name": "get_stock_financials",
-                      "label": "核对财务数据"})
-            on_event({"type": "tool_done", "name": "get_stock_financials",
-                      "label": "核对财务数据", "ok": True})
-            return "财务数据", [{"name": "get_stock_financials",
-                                 "label": "核对财务数据", "ok": True, "duration_ms": 100}]
-
-        def fake_answer(question, stock_code, stock_name, target_code,
-                        report_context, tool_results, is_off_topic, history=None):
-            return "这是回答"
-
-        with patch.object(graph, "_understand", side_effect=fake_understand), \
-             patch.object(graph, "_tool_loop", side_effect=fake_tool_loop), \
-             patch.object(graph, "_answer", side_effect=fake_answer):
-            result = graph.run_qa_agent(
-                "估值如何", "000858", "五粮液", "报告", [], None,
-                on_event=events.append,
-            )
-
-        types = [e["type"] for e in events]
-        assert types == ["phase", "tool_start", "tool_done", "phase"]
-        assert events[0]["phase"] == "understand"
-        assert events[3]["phase"] == "answer"
-        assert result["success"] is True
-        assert result["tool_calls"][0]["name"] == "get_stock_financials"
-
-    def test_no_tools_no_tool_events(self):
-        """纯报告解读（needs_tools=False）：只有 understand/answer 两个 phase"""
-        events = []
-
-        with patch.object(graph, "_understand", return_value={
-            "is_off_topic": False, "stock_code": "000858",
-            "needs_tools": False, "tool_hints": [],
-        }), \
-             patch.object(graph, "_tool_loop", return_value=("", [])) as tl, \
-             patch.object(graph, "_answer", return_value="报告解读"):
-            graph.run_qa_agent("报告说了什么", "000858", "五粮液",
-                               "报告", [], None, on_event=events.append)
-
-        types = [e["type"] for e in events]
-        assert types == ["phase", "phase"]
-        assert events[0]["phase"] == "understand"
-        assert events[1]["phase"] == "answer"
-        tl.assert_not_called()
-
-    def test_off_topic_still_emits_understand(self):
-        """无关问题：只发 understand 阶段事件，不发 answer（边界态 B1：②③ 不出现）"""
-        events = []
-
-        with patch.object(graph, "_understand", return_value={
-            "is_off_topic": True, "stock_code": "000858",
-            "needs_tools": False, "tool_hints": [],
-        }), \
-             patch.object(graph, "_tool_loop", return_value=("", [])), \
-             patch.object(graph, "_answer", return_value="karens暂时无法回答您这个问题哦？"):
-            graph.run_qa_agent("今天天气如何", "000858", "五粮液",
-                               "报告", [], None, on_event=events.append)
-
-        assert events[0] == {"type": "phase", "phase": "understand"}
-        assert {"type": "phase", "phase": "answer"} not in events
-
-    def test_on_event_none_keeps_old_behavior(self):
-        """不传 on_event：事件插桩无副作用，返回结构不变"""
-        with patch.object(graph, "_understand", return_value={
-            "is_off_topic": False, "stock_code": "000858",
-            "needs_tools": False, "tool_hints": [],
-        }), \
-             patch.object(graph, "_answer", return_value="回答"):
-            result = graph.run_qa_agent("问", "000858", "五粮液", "报告", [], None)
-
-        assert result["success"] is True
-        assert result["answer"] == "回答"
+    def test_messages_starts_with_plain_question(self):
+        st = graph.build_initial_state("财报分析", "301301", "川宁生物", "报告", [], None)
+        assert st["messages"] == [{"role": "user", "content": "财报分析"}]
+        assert st["target_code"] == "301301"
+        assert st["rounds"] == 0
+        assert st["tool_calls"] == []
+        assert st["answer_text"] == ""
+        assert st["is_off_topic"] is False
 
 
-class TestToolLoopEvents:
-    """_tool_loop 真实执行：每个工具调用发 tool_start + tool_done"""
+class TestUnderstandNode:
+    """understand 节点：解析、JSON 包裹剥离、异常兜底"""
 
-    def test_emits_start_and_done_per_tool(self, monkeypatch):
-        events = []
-        first = _make_resp("", tool_calls=[
-            _make_tool_call("search_news", {"query": "五粮液最新新闻"}),
-        ])
-        second = _make_resp("好的，还有问题吗")
-        fake_client = MagicMock()
-        fake_client.chat.completions.create.side_effect = [first, second]
-        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
-        monkeypatch.setattr(graph, "execute_tool_call",
-                            lambda name, args: {"ok": True, "text": "新闻数据"})
-        monkeypatch.setattr(graph, "get_tool_descriptions",
-                            lambda server: [{"name": "search_news",
-                                             "description": "查新闻",
-                                             "inputSchema": {}}])
-
-        results, records = graph._tool_loop(
-            "最近有什么新闻", "000858", [], on_event=events.append)
-
-        assert len(records) == 1
-        assert records[0]["arguments"] == {"query": "五粮液最新新闻"}
-        assert events[0]["type"] == "tool_start"
-        assert events[0]["label"] == "查询近期新闻"
-        assert events[1]["type"] == "tool_done"
-        assert events[1]["ok"] is True
-
-    def test_failed_tool_emits_ok_false(self, monkeypatch):
-        events = []
-        first = _make_resp("", tool_calls=[
-            _make_tool_call("search_news", {"query": "x"}),
-        ])
-        second = _make_resp("结束")
-        fake_client = MagicMock()
-        fake_client.chat.completions.create.side_effect = [first, second]
-        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
-        monkeypatch.setattr(graph, "execute_tool_call",
-                            lambda name, args: {"ok": False, "text": "[错误] iFinD 限速"})
-        monkeypatch.setattr(graph, "get_tool_descriptions",
-                            lambda server: [{"name": "search_news",
-                                             "description": "查新闻",
-                                             "inputSchema": {}}])
-
-        _, records = graph._tool_loop("新闻", "000858", [], on_event=events.append)
-
-        assert events[1] == {"type": "tool_done", "name": "search_news",
-                             "label": "查询近期新闻", "ok": False}
-        assert records[0]["arguments"] == {"query": "x"}
-
-    def test_context_contains_stock_name(self, monkeypatch):
-        """_tool_loop 的 context 应含股票名称，让 LLM 生成 query 时能带上证券实体
-
-        实证（2026-08-19）：query 缺证券实体名导致财务查询"假成功"，本测试确保
-        context 注入目标股票名称，LLM 得以在 query 中携带实体名。
-        """
-        resp = _make_resp("结束")
+    def test_parses_json_and_maps_fields(self, monkeypatch):
+        writer = MagicMock()
+        resp = _make_resp('{"is_off_topic": false, "stock_code": "000858", '
+                          '"needs_tools": true, "tool_hints": ["财务"]}')
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = resp
         monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
-        monkeypatch.setattr(graph, "get_tool_descriptions", lambda server: [])
+        state = graph.build_initial_state("财报分析", "000858", "五粮液", "报告", [], None)
+        out = graph.understand_node(state, writer)
+        assert out["needs_tools"] is True
+        assert out["target_code"] == "000858"
+        assert out["tool_hints"] == ["财务"]
+        writer.assert_called_once_with({"type": "phase", "phase": "understand"})
 
-        graph._tool_loop("财报分析", "301301", [], on_event=None, stock_name="川宁生物")
+    def test_strips_code_fence(self, monkeypatch):
+        writer = MagicMock()
+        resp = _make_resp('```json\n{"is_off_topic": false, "needs_tools": false}\n```')
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = resp
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        state = graph.build_initial_state("问", "000858", "五粮液", "报告", [], None)
+        out = graph.understand_node(state, writer)
+        assert out["needs_tools"] is False
 
-        sent = fake_client.chat.completions.create.call_args.kwargs["messages"][0]["content"]
-        assert "川宁生物" in sent
-        assert "301301" in sent
+    def test_parse_failure_falls_back_to_stock_related(self, monkeypatch):
+        writer = MagicMock()
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = Exception("LLM 500")
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        state = graph.build_initial_state("问", "000858", "五粮液", "报告", [], None)
+        out = graph.understand_node(state, writer)
+        assert out["is_off_topic"] is False
+        assert out["needs_tools"] is False
+        assert out["target_code"] == "000858"
+        assert out["tool_hints"] == []
 
 
-class TestAnswerFallback:
-    """_answer 空 content 兜底"""
+class TestLlmRoundNode:
+    """llm_round 节点：首轮注入目标股票、干净 assistant 消息、失败兜底"""
 
-    def test_empty_content_returns_friendly_hint(self, monkeypatch):
-        """LLM 返回空 content 时 answer 应为兜底文案而非空（防只显示免责声明）"""
+    def test_injects_target_context_on_first_round(self, monkeypatch):
         resp = _make_resp("")
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = resp
         monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        monkeypatch.setattr(graph, "get_tool_descriptions", lambda server: [])
+        state = graph.build_initial_state("财报分析", "301301", "川宁生物", "报告", [], None)
+        state["target_code"] = "600000"   # 跨股票提问：目标股 ≠ 会话股
+        graph.llm_round_node(state)
+        sent = fake_client.chat.completions.create.call_args.kwargs["messages"]
+        assert "600000" in sent[0]["content"]
+        assert "川宁生物" in sent[0]["content"]
 
-        answer = graph._answer("财报分析", "301301", "川宁生物", "301301",
-                               "报告", "工具结果", False)
-        assert "抱歉" in answer
-        assert "不构成投资建议" in answer  # DISCLAIMER 仍在
+    def test_appends_clean_assistant_with_tool_calls(self, monkeypatch):
+        resp = _make_resp("", tool_calls=[_make_tool_call("search_news", {"query": "x"})])
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = resp
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        monkeypatch.setattr(graph, "get_tool_descriptions", lambda server: [])
+        state = graph.build_initial_state("问", "000858", "五粮液", "报告", [], None)
+        out = graph.llm_round_node(state)
+        last = out["messages"][-1]
+        assert last["role"] == "assistant"
+        assert last["tool_calls"][0]["function"]["name"] == "search_news"
+        assert "reasoning_content" not in last
+
+    def test_llm_failure_appends_closeout_message(self, monkeypatch):
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = Exception("API 500")
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        monkeypatch.setattr(graph, "get_tool_descriptions", lambda server: [])
+        state = graph.build_initial_state("问", "000858", "五粮液", "报告", [], None)
+        out = graph.llm_round_node(state)
+        last = out["messages"][-1]
+        assert last["role"] == "assistant"
+        assert "tool_calls" not in last
+
+
+class TestExecuteToolsNode:
+    """execute_tools 节点：工具执行、records、事件、arguments 守卫"""
+
+    def test_executes_tools_and_emits_events(self, monkeypatch):
+        writer = MagicMock()
+        monkeypatch.setattr(graph, "execute_tool_call",
+                            lambda name, args: {"ok": True, "text": "财务数据"})
+        state = graph.build_initial_state("财报分析", "000858", "五粮液", "报告", [], None)
+        state["messages"].append({
+            "role": "assistant", "content": "",
+            "tool_calls": [{
+                "id": "call_1", "type": "function",
+                "function": {"name": "get_stock_financials",
+                             "arguments": json.dumps({"query": "营收"})},
+            }],
+        })
+        out = graph.execute_tools_node(state, writer)
+        assert out["rounds"] == 1
+        assert out["tool_results"] == "财务数据"
+        assert out["tool_calls"][0]["name"] == "get_stock_financials"
+        assert out["tool_calls"][0]["arguments"] == {"query": "营收"}
+        assert writer.call_count == 2          # tool_start + tool_done
+        assert out["messages"][-1]["role"] == "tool"
+        assert out["messages"][-1]["content"] == "财务数据"
+
+    def test_non_dict_arguments_wrapped(self, monkeypatch):
+        writer = MagicMock()
+        captured = {}
+
+        def fake_exec(name, args):
+            captured["args"] = args
+            return {"ok": True, "text": "数据"}
+        monkeypatch.setattr(graph, "execute_tool_call", fake_exec)
+        state = graph.build_initial_state("问", "000858", "五粮液", "报告", [], None)
+        state["messages"].append({
+            "role": "assistant", "content": "",
+            "tool_calls": [{
+                "id": "call_1", "type": "function",
+                "function": {"name": "search_news", "arguments": json.dumps("随便")},
+            }],
+        })
+        graph.execute_tools_node(state, writer)
+        assert captured["args"] == {"query": "随便"}
+
+
+class TestAnswerNode:
+    """answer 节点：off_topic 拒绝、空 content fallback、REPORT_ONLY 分支"""
+
+    def test_off_topic_returns_rejection_no_phase(self):
+        writer = MagicMock()
+        state = graph.build_initial_state("今天天气如何", "000858", "五粮液", "报告", [], None)
+        state["is_off_topic"] = True
+        out = graph.answer_node(state, writer)
+        assert out["answer_text"] == "karens暂时无法回答您这个问题哦？"
+        writer.assert_not_called()
+
+    def test_empty_content_fallback_and_disclaimer(self, monkeypatch):
+        writer = MagicMock()
+        resp = _make_resp("")
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = resp
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        state = graph.build_initial_state("财报分析", "301301", "川宁生物", "报告", [], None)
+        state["tool_results"] = "财务数据"
+        out = graph.answer_node(state, writer)
+        assert "抱歉" in out["answer_text"]
+        assert "不构成投资建议" in out["answer_text"]
+        writer.assert_called_once_with({"type": "phase", "phase": "answer"})
+
+    def test_uses_report_only_when_no_tool_results(self, monkeypatch):
+        writer = MagicMock()
+        resp = _make_resp("报告解读内容")
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = resp
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        state = graph.build_initial_state("报告说了什么", "000858", "五粮液", "报告", [], None)
+        out = graph.answer_node(state, writer)
+        assert "报告解读内容" in out["answer_text"]
+        assert "不构成投资建议" in out["answer_text"]

@@ -8,12 +8,59 @@
 import json
 import os
 from datetime import datetime
+from typing import TypedDict
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import StreamWriter
 from openai import OpenAI
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_ID
 from .tools import get_tool_descriptions, execute_tool_call, TOOL_FRIENDLY_NAMES
 
 MAX_TOOL_ROUNDS = 4
+
+
+class QaState(TypedDict):
+    """LangGraph 工作流状态"""
+    # 输入（build_initial_state 一次注入）
+    question: str
+    stock_code: str          # 会话绑定股票（报告锚点，始终保持）
+    stock_name: str
+    report_context: str
+    history: list[dict]      # 最近 8 轮 [{role, content}]
+    tool_hints: list[str]    # understand 失败兜底方向
+    # understand 产出
+    is_off_topic: bool
+    needs_tools: bool
+    target_code: str         # 跨股票提问时 ≠ stock_code
+    # tool 循环维护
+    messages: list[dict]     # OpenAI 格式对话（首条为纯问题，含工具结果回填）
+    tool_results: str        # 拼接的工具文本（喂 answer）
+    tool_calls: list[dict]   # records [{name, label, ok, duration_ms, arguments}]
+    rounds: int              # 已执行工具轮数（替换 for 循环计数器）
+    # answer 产出
+    answer_text: str
+
+
+def build_initial_state(question, stock_code, stock_name, report_context,
+                        tool_hints, history=None) -> dict:
+    """构建初始 state（messages 仅含纯问题；目标股票上下文由 llm_round 首轮注入）"""
+    return {
+        "question": question,
+        "stock_code": stock_code,
+        "stock_name": stock_name,
+        "report_context": report_context,
+        "history": history or [],
+        "tool_hints": tool_hints,
+        "is_off_topic": False,
+        "needs_tools": False,
+        "target_code": stock_code,
+        "messages": [{"role": "user", "content": question}],
+        "tool_results": "",
+        "tool_calls": [],
+        "rounds": 0,
+        "answer_text": "",
+    }
+
 
 _client = None
 
@@ -212,6 +259,173 @@ def _answer(question: str, stock_code: str, stock_name: str, target_code: str,
     if not answer.strip():
         answer = "抱歉，我未能获取到足够的实时数据来完成这次分析，请换个问法或稍后再试。"
     return answer + DISCLAIMER
+
+
+def understand_node(state: QaState, writer: StreamWriter) -> dict:
+    """意图理解节点：发 phase understand 事件，产出意图分析结果"""
+    from .prompts import UNDERSTAND_PROMPT
+
+    writer({"type": "phase", "phase": "understand"})
+    now = datetime.now()
+    prompt = UNDERSTAND_PROMPT.format(
+        question=state["question"], stock_code=state["stock_code"],
+        stock_name=state["stock_name"], today_str=now.strftime("%Y-%m-%d"),
+    )
+    try:
+        resp = _get_client().chat.completions.create(
+            model=LLM_MODEL_ID, max_tokens=500,
+            messages=[{"role": "user", "content": prompt}],
+            extra_body={"thinking": {"type": "disabled"}},  # 意图分析求快
+        )
+        text = resp.choices[0].message.content or ""
+        # 剥离 ```json 包裹（先处理 ```json 再处理 ```，避免 json 前缀残留）
+        if "```json" in text:
+            text = text.split("```json", 1)[1].split("```", 1)[0]
+        elif "```" in text:
+            text = text.split("```", 1)[1].split("```", 1)[0]
+        data = json.loads(text.strip())
+        return {
+            "is_off_topic": bool(data.get("is_off_topic", False)),
+            "needs_tools": bool(data.get("needs_tools", False)),
+            "target_code": data.get("stock_code") or state["stock_code"],
+            "tool_hints": data.get("tool_hints", []),
+        }
+    except Exception as e:
+        print(f"[chat_agent] [警告] 意图理解失败，默认按股票相关处理: {e}")
+        return {
+            "is_off_topic": False,
+            "needs_tools": False,
+            "target_code": state["stock_code"],
+            "tool_hints": [],
+        }
+
+
+def llm_round_node(state: QaState) -> dict:
+    """单轮 Function Calling：调用 LLM，产出本轮 tool_calls 或收尾消息
+
+    首轮（rounds == 0）把 messages[0] 替换为目标股票上下文（含证券实体名，
+    2026-08-19 根因修复）；target_code 由 understand 产出，跨股票提问时 ≠ stock_code。
+    """
+    tools = _build_tools_for(state["tool_hints"])
+    messages = list(state["messages"])
+    if state["rounds"] == 0:
+        messages = [{
+            "role": "user",
+            "content": (f"当前对话股票目标：{state['target_code']}"
+                        f"（{state['stock_name']}）。问题：{state['question']}"),
+        }] + messages[1:]
+    try:
+        resp = _get_client().chat.completions.create(
+            model=LLM_MODEL_ID, messages=messages, tools=tools,
+            max_tokens=2048,
+            extra_body={"thinking": {"type": "enabled"}},
+            temperature=1.0,
+        )
+        msg = resp.choices[0].message
+        tool_calls = msg.tool_calls or []
+        if not tool_calls:
+            # 收尾：无工具调用
+            return {"messages": messages + [{"role": "assistant", "content": msg.content or ""}]}
+        # 干净 assistant 消息：只保留 OpenAI 兼容字段，剔除 reasoning_content
+        return {"messages": messages + [{
+            "role": "assistant",
+            "content": msg.content,
+            "tool_calls": [
+                {
+                    "id": tc.id, "type": tc.type,
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in tool_calls
+            ],
+        }]}
+    except Exception as e:
+        # LLM 调用失败：本轮无工具，避免死循环，走 answer
+        print(f"[chat_agent] [警告] 工具循环 LLM 调用失败: {e}")
+        return {"messages": messages + [{"role": "assistant", "content": ""}]}
+
+
+def execute_tools_node(state: QaState, writer: StreamWriter) -> dict:
+    """执行本轮全部工具调用：发 tool_start/tool_done，累积 records 与 tool_results"""
+    import time as _t
+
+    last = state["messages"][-1]
+    calls = last.get("tool_calls") or []
+    messages = list(state["messages"])
+    records = list(state["tool_calls"])
+    results_parts = []
+
+    for tc in calls:
+        name = tc["function"]["name"]
+        label = TOOL_FRIENDLY_NAMES.get(name, name)
+        writer({"type": "tool_start", "name": name, "label": label})
+        try:
+            args = json.loads(tc["function"]["arguments"])
+        except Exception:
+            args = {}
+        # 边界守卫：LLM 返回的 arguments 可能是不可信的非 dict，统一包成 {"query": ...}
+        if not isinstance(args, dict):
+            args = {"query": str(args)}
+        t0 = _t.time()
+        out = execute_tool_call(name, args)
+        dt = int((_t.time() - t0) * 1000)
+        writer({"type": "tool_done", "name": name, "label": label, "ok": out["ok"]})
+        records.append({
+            "name": name, "label": label, "ok": out["ok"],
+            "duration_ms": dt, "arguments": args,
+        })
+        results_parts.append(out["text"])
+        messages.append({"role": "tool", "tool_call_id": tc["id"], "content": out["text"]})
+
+    return {
+        "messages": messages,
+        "tool_results": (state["tool_results"] + "\n\n".join(results_parts)
+                         if results_parts else state["tool_results"]),
+        "tool_calls": records,
+        "rounds": state["rounds"] + 1,
+    }
+
+
+def answer_node(state: QaState, writer: StreamWriter) -> dict:
+    """生成最终回答：off_topic 拒绝（不发 phase）；否则发 phase answer 事件 + 正文"""
+    from .prompts import ANSWER_PROMPT, REPORT_ONLY_PROMPT, DISCLAIMER
+
+    if state["is_off_topic"]:
+        return {"answer_text": "karens暂时无法回答您这个问题哦？"}
+
+    writer({"type": "phase", "phase": "answer"})
+
+    history_text = _format_history(state["history"])
+    # 跨股票提问时标注目标股票，让 LLM 把工具数据归属到目标股票；同股则留空
+    target_line = (f"目标股票：{state['target_code']}"
+                   if state["target_code"] != state["stock_code"] else "")
+    tool_results = state["tool_results"].strip()
+
+    if tool_results:
+        prompt = ANSWER_PROMPT.format(
+            question=state["question"], stock_code=state["stock_code"],
+            stock_name=state["stock_name"], target_line=target_line,
+            report_context=state["report_context"], tool_results=tool_results,
+            history=history_text,
+        )
+    else:
+        prompt = REPORT_ONLY_PROMPT.format(
+            question=state["question"], stock_code=state["stock_code"],
+            stock_name=state["stock_name"], target_line=target_line,
+            report_context=state["report_context"], history=history_text,
+        )
+
+    resp = _get_client().chat.completions.create(
+        model=LLM_MODEL_ID, messages=[{"role": "user", "content": prompt}],
+        # max_tokens 放大（2026-08-19）：工具结果可达 1.3 万字符，4096 偶发耗尽
+        max_tokens=16000,
+        extra_body={"thinking": {"type": "enabled"}},
+        temperature=1.0,
+    )
+    answer = resp.choices[0].message.content or ""
+    # 兜底（2026-08-19）：思考完成但正文为空时给友好提示而非只拼免责声明
+    if not answer.strip():
+        answer = "抱歉，我未能获取到足够的实时数据来完成这次分析，请换个问法或稍后再试。"
+    return {"answer_text": answer + DISCLAIMER}
 
 
 def run_qa_agent(question: str, stock_code: str, stock_name: str,
