@@ -74,46 +74,6 @@ def _get_client() -> OpenAI:
     return _client
 
 
-def _understand(question: str, stock_code: str, stock_name: str) -> dict:
-    """意图理解：返回 {is_off_topic, stock_code, needs_tools, tool_hints}"""
-    from .prompts import UNDERSTAND_PROMPT
-
-    now = datetime.now()
-    prompt = UNDERSTAND_PROMPT.format(
-        question=question, stock_code=stock_code, stock_name=stock_name,
-        today_str=now.strftime("%Y-%m-%d"),
-    )
-    client = _get_client()
-    try:
-        resp = client.chat.completions.create(
-            model=LLM_MODEL_ID,
-            max_tokens=500,
-            messages=[{"role": "user", "content": prompt}],
-            extra_body={"thinking": {"type": "disabled"}},  # 意图分析求快
-        )
-        text = resp.choices[0].message.content or ""
-        # 剥离 ```json 包裹（先处理 ```json 再处理 ```，避免 json 前缀残留导致 loads 失败）
-        if "```json" in text:
-            text = text.split("```json", 1)[1].split("```", 1)[0]
-        elif "```" in text:
-            text = text.split("```", 1)[1].split("```", 1)[0]
-        data = json.loads(text.strip())
-        return {
-            "is_off_topic": bool(data.get("is_off_topic", False)),
-            "stock_code": data.get("stock_code") or stock_code,
-            "needs_tools": bool(data.get("needs_tools", False)),
-            "tool_hints": data.get("tool_hints", []),
-        }
-    except Exception as e:
-        print(f"[chat_agent] [警告] 意图理解失败，默认按股票相关处理: {e}")
-        return {
-            "is_off_topic": False,
-            "stock_code": stock_code,
-            "needs_tools": False,
-            "tool_hints": [],
-        }
-
-
 def _format_history(history: list[dict] | None) -> str:
     """把历史消息列表转成 prompt 文本（越早的在前）"""
     if not history:
@@ -125,140 +85,6 @@ def _format_history(history: list[dict] | None) -> str:
         label = "用户" if role == "user" else "助手"
         lines.append(f"{label}：{content}")
     return "\n".join(lines)
-
-
-def _tool_loop(question: str, target_code: str, tool_hints: list[str],
-               on_event=None, stock_name: str = "") -> tuple[list, list]:
-    """Function Calling 循环，返回 (tool_results_text, tool_calls_records)
-
-    tool_calls_records: [{name, label, ok, duration_ms, arguments}] —— 供前端步骤卡片 + 落库诊断
-    on_event: 可选回调 on_event(evt: dict)，每个工具调用前发 tool_start、后发 tool_done
-    stock_name: 会话股票名称，注入 context 让 LLM 的 query 能携带证券实体名
-    """
-    tools = _build_tools_for(tool_hints)
-    # 注入目标股票代码 + 名称（D7 跨股票提问 + 2026-08-19 根因修复）：
-    # - 代码让 LLM 能生成带交易所后缀的 symbols（如 000858.SZ）
-    # - 名称让 LLM 的自然语言 query 带上证券实体（如"川宁生物…"），否则
-    #   get_stock_financials 等工具会因缺证券实体返回"未返回有效结果"
-    context_question = f"当前对话股票目标：{target_code}（{stock_name}）。问题：{question}"
-    messages = [{"role": "user", "content": context_question}]
-    results = []
-    records = []
-
-    for _ in range(MAX_TOOL_ROUNDS):
-        resp = _get_client().chat.completions.create(
-            model=LLM_MODEL_ID,
-            messages=messages,
-            tools=tools,
-            max_tokens=2048,
-            extra_body={"thinking": {"type": "enabled"}},
-            temperature=1.0,
-        )
-        msg = resp.choices[0].message
-        tool_calls = msg.tool_calls or []
-        if not tool_calls:
-            break
-        # 不直接回填原始 msg 对象：思考模式下其 reasoning_content 会一并回传浪费 token（个别版本可能 400），
-        # 构造干净 dict 只保留 OpenAI 兼容的 role/content/tool_calls 字段
-        messages.append({
-            "role": "assistant",
-            "content": msg.content,
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": tc.type,
-                    "function": {
-                        "name": tc.function.name,
-                        "arguments": tc.function.arguments,
-                    },
-                }
-                for tc in tool_calls
-            ],
-        })
-        for tc in tool_calls:
-            if on_event is not None:
-                on_event({"type": "tool_start", "name": tc.function.name,
-                          "label": TOOL_FRIENDLY_NAMES.get(tc.function.name, tc.function.name)})
-            try:
-                args = json.loads(tc.function.arguments)
-            except Exception:
-                args = {}
-            # 边界守卫：LLM 返回的 arguments 可能是不可信的非 dict（如数组/字符串），
-            # 统一包成 {"query": ...} 再交给 execute_tool_call，避免 dict(arguments) 抛异常破坏工具循环
-            if not isinstance(args, dict):
-                args = {"query": str(args)}
-            import time as _t
-            t0 = _t.time()
-            out = execute_tool_call(tc.function.name, args)
-            dt = int((_t.time() - t0) * 1000)
-            if on_event is not None:
-                on_event({"type": "tool_done", "name": tc.function.name,
-                          "label": TOOL_FRIENDLY_NAMES.get(tc.function.name, tc.function.name),
-                          "ok": out["ok"]})
-            records.append({
-                "name": tc.function.name,
-                "label": TOOL_FRIENDLY_NAMES.get(tc.function.name, tc.function.name),
-                "ok": out["ok"],
-                "duration_ms": dt,
-                "arguments": args,   # LLM 本次调用的参数，落库供排查工具重复调用
-            })
-            results.append(out["text"])
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc.id,
-                "content": out["text"],
-            })
-        # 工具失败或已收集足够数据，LLM 会自行停止请求工具
-    return "\n\n".join(results), records
-
-
-def _answer(question: str, stock_code: str, stock_name: str, target_code: str,
-            report_context: str, tool_results: str, is_off_topic: bool,
-            history: list[dict] | None = None) -> str:
-    """生成最终回答（工具结果 / 报告 / 历史）
-
-    Args:
-        stock_code: 会话绑定股票（报告锚点，始终保持）
-        target_code: understand 解析的目标股票（跨股票提问时与 stock_code 不同）
-        history: 最近 8 轮历史 [{role, content}]，注入 prompt 供理解追问
-    """
-    from .prompts import ANSWER_PROMPT, REPORT_ONLY_PROMPT, DISCLAIMER
-
-    if is_off_topic:
-        return "karens暂时无法回答您这个问题哦？"
-
-    history_text = _format_history(history)
-    # 跨股票提问时标注目标股票，让 LLM 把工具数据归属到目标股票；同股则留空
-    target_line = f"目标股票：{target_code}" if target_code and target_code != stock_code else ""
-
-    if tool_results.strip():
-        prompt = ANSWER_PROMPT.format(
-            question=question, stock_code=stock_code, stock_name=stock_name,
-            target_line=target_line, report_context=report_context,
-            tool_results=tool_results, history=history_text,
-        )
-    else:
-        prompt = REPORT_ONLY_PROMPT.format(
-            question=question, stock_code=stock_code, stock_name=stock_name,
-            target_line=target_line, report_context=report_context,
-            history=history_text,
-        )
-
-    resp = _get_client().chat.completions.create(
-        model=LLM_MODEL_ID,
-        messages=[{"role": "user", "content": prompt}],
-        # max_tokens 放大（2026-08-19）：工具结果累积可达 1.3 万字符，与 thinking
-        # 思考共用输出预算，4096 偶发耗尽导致 content 为空（回答只剩免责声明）
-        max_tokens=16000,
-        extra_body={"thinking": {"type": "enabled"}},
-        temperature=1.0,
-    )
-    answer = resp.choices[0].message.content or ""
-    # 兜底（2026-08-19）：模型思考完成但未生成正文（如工具结果全部失败时），
-    # 给友好提示而非只拼免责声明导致"回答只有免责声明"
-    if not answer.strip():
-        answer = "抱歉，我未能获取到足够的实时数据来完成这次分析，请换个问法或稍后再试。"
-    return answer + DISCLAIMER
 
 
 def understand_node(state: QaState, writer: StreamWriter) -> dict:
@@ -428,51 +254,71 @@ def answer_node(state: QaState, writer: StreamWriter) -> dict:
     return {"answer_text": answer + DISCLAIMER}
 
 
+def decide_after_understand(state: QaState) -> str:
+    """understand 后：off_topic 或不需要工具 → answer；否则 → llm_round"""
+    if state["is_off_topic"] or not state["needs_tools"]:
+        return "answer"
+    return "llm_round"
+
+
+def decide_after_llm(state: QaState) -> str:
+    """llm_round 后：本轮有工具调用 且 未达轮次上限 → execute_tools；否则 → answer"""
+    last = state["messages"][-1]
+    has_calls = bool(last.get("tool_calls")) and state["rounds"] < MAX_TOOL_ROUNDS
+    return "execute_tools" if has_calls else "answer"
+
+
+def create_qa_workflow():
+    """构建并编译 QA 工作流（4 节点 + 2 条件边）"""
+    wf = StateGraph(QaState)
+    wf.add_node("understand", understand_node)
+    wf.add_node("llm_round", llm_round_node)
+    wf.add_node("execute_tools", execute_tools_node)
+    wf.add_node("answer", answer_node)
+    wf.add_edge(START, "understand")
+    wf.add_conditional_edges("understand", decide_after_understand)
+    wf.add_conditional_edges("llm_round", decide_after_llm)
+    wf.add_edge("execute_tools", "llm_round")
+    wf.add_edge("answer", END)
+    return wf.compile()
+
+
+_compiled_workflow = None
+
+
+def qa_workflow():
+    """获取编译后的工作流（单例缓存，避免每次调用重建）"""
+    global _compiled_workflow
+    if _compiled_workflow is None:
+        _compiled_workflow = create_qa_workflow()
+    return _compiled_workflow
+
+
 def run_qa_agent(question: str, stock_code: str, stock_name: str,
                  report_context: str, tool_hints: list[str],
-                 history: list[dict] | None = None, on_event=None) -> dict:
-    """总入口：understand → tool_loop → answer
+                 history: list[dict] | None = None) -> dict:
+    """同步执行完整问答（LangGraph 薄封装）
 
-    Args:
-        question: 用户本轮问题
-        stock_code: 会话绑定股票代码（报告锚点）
-        stock_name: 会话绑定股票名称
-        report_context: 注入的报告结论摘要
-        tool_hints: 预设工具方向（understand 失败时兜底）
-        history: 最近 8 轮历史 [{role, content}]，供 answer 注入上下文
-        on_event: 可选回调 on_event(evt: dict)，阶段切换时发 phase 事件并透传工具事件
+    流式路径由 routers/chat.py 直接调用 qa_workflow().astream()；
+    本函数供同步调用/测试/诊断，返回结构保持兼容。
 
     Returns:
         {
             "answer": str,
             "is_off_topic": bool,
-            "tool_calls": list[dict],   # [{name, label, ok, duration_ms}]
+            "tool_calls": list[dict],   # [{name, label, ok, duration_ms, arguments}]
             "success": bool,
             "error": str,
         }
     """
     try:
-        if on_event is not None:
-            on_event({"type": "phase", "phase": "understand"})
-        und = _understand(question, stock_code, stock_name)
-        is_off_topic = und["is_off_topic"]
-        needs_tools = und["needs_tools"] and not is_off_topic
-        # 目标股票：understand 提取（跨股票提问 D7），否则默认会话股票
-        target_code = und.get("stock_code") or stock_code
-
-        tool_results, records = "", []
-        if needs_tools:
-            hints = und["tool_hints"] or tool_hints
-            tool_results, records = _tool_loop(question, target_code, hints,
-                                               on_event=on_event, stock_name=stock_name)
-        if on_event is not None and not is_off_topic:
-            on_event({"type": "phase", "phase": "answer"})
-        answer = _answer(question, stock_code, stock_name, target_code,
-                         report_context, tool_results, is_off_topic, history)
+        initial = build_initial_state(question, stock_code, stock_name,
+                                      report_context, tool_hints, history)
+        result = qa_workflow().invoke(initial)
         return {
-            "answer": answer,
-            "is_off_topic": is_off_topic,
-            "tool_calls": records,
+            "answer": result["answer_text"],
+            "is_off_topic": result["is_off_topic"],
+            "tool_calls": result["tool_calls"],
             "success": True,
             "error": "",
         }

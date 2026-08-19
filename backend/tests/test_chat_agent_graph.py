@@ -202,3 +202,123 @@ class TestAnswerNode:
         out = graph.answer_node(state, writer)
         assert "报告解读内容" in out["answer_text"]
         assert "不构成投资建议" in out["answer_text"]
+
+
+class TestWorkflow:
+    """真图流转：条件边循环、事件序列、轮次上限、off_topic/无工具路径"""
+
+    def test_full_flow_event_sequence(self, monkeypatch):
+        """带工具问答：phase understand → tool_start/tool_done → phase answer"""
+        responses = [
+            _make_resp('{"is_off_topic": false, "needs_tools": true, "tool_hints": ["财务"]}'),
+            _make_resp("", tool_calls=[_make_tool_call("get_stock_financials", {"query": "川宁生物营收"})]),
+            _make_resp("好的，分析如下"),
+            _make_resp("## 川宁生物财报分析\n营收 10.9 亿"),
+        ]
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = responses
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        monkeypatch.setattr(graph, "execute_tool_call",
+                            lambda name, args: {"ok": True, "text": "营收 10.9 亿"})
+        monkeypatch.setattr(graph, "get_tool_descriptions",
+                            lambda server: [{"name": "get_stock_financials",
+                                             "description": "财务", "inputSchema": {}}])
+
+        events = []
+        final_answer = None
+        initial = graph.build_initial_state("财报分析", "301301", "川宁生物", "报告", [], None)
+        for mode, chunk in graph.qa_workflow().stream(initial, stream_mode=["custom", "updates"]):
+            if mode == "custom":
+                events.append(chunk)
+            else:
+                for node, upd in chunk.items():
+                    if node == "answer" and upd.get("answer_text"):
+                        final_answer = upd["answer_text"]
+
+        types = [e["type"] for e in events]
+        assert types[0] == "phase" and events[0]["phase"] == "understand"
+        assert "tool_start" in types and "tool_done" in types
+        assert types[-1] == "phase" and events[-1]["phase"] == "answer"
+        assert "川宁生物财报分析" in final_answer
+
+    def test_rounds_capped_at_max(self, monkeypatch):
+        """LLM 一直要工具：循环在 MAX_TOOL_ROUNDS 轮后强制收尾"""
+        responses = [
+            _make_resp('{"is_off_topic": false, "needs_tools": true}'),
+            *[_make_resp("", tool_calls=[_make_tool_call("search_news", {"query": "x"})])
+              for _ in range(graph.MAX_TOOL_ROUNDS)],
+            _make_resp("已收尾"),
+            _make_resp("回答"),
+        ]
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = responses
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        monkeypatch.setattr(graph, "execute_tool_call",
+                            lambda name, args: {"ok": True, "text": "数据"})
+        monkeypatch.setattr(graph, "get_tool_descriptions", lambda server: [])
+
+        final = graph.qa_workflow().invoke(
+            graph.build_initial_state("问", "000858", "五粮液", "报告", [], None))
+        assert final["rounds"] == graph.MAX_TOOL_ROUNDS
+        assert "回答" in final["answer_text"]
+
+    def test_off_topic_path_no_tool_events(self, monkeypatch):
+        """无关问题：仅 phase understand 事件，answer 返回拒绝文案"""
+        responses = [
+            _make_resp('{"is_off_topic": true}'),
+            _make_resp("回答"),
+        ]
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = responses
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+
+        initial = graph.build_initial_state("今天天气", "000858", "五粮液", "报告", [], None)
+        events = [c for c in graph.qa_workflow().stream(initial, stream_mode="custom")]
+        assert events == [{"type": "phase", "phase": "understand"}]
+
+    def test_no_tools_only_phase_events(self, monkeypatch):
+        """纯报告解读：仅两个 phase 事件"""
+        responses = [
+            _make_resp('{"is_off_topic": false, "needs_tools": false}'),
+            _make_resp("报告解读"),
+        ]
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = responses
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+
+        events = []
+        initial = graph.build_initial_state("报告说了什么", "000858", "五粮液", "报告", [], None)
+        for mode, chunk in graph.qa_workflow().stream(initial, stream_mode=["custom", "updates"]):
+            if mode == "custom":
+                events.append(chunk)
+        assert [e["type"] for e in events] == ["phase", "phase"]
+        assert events[0]["phase"] == "understand"
+        assert events[1]["phase"] == "answer"
+
+
+class TestRunQaAgent:
+    """run_qa_agent 同步薄封装"""
+
+    def test_sync_wrapper_invokes_graph(self, monkeypatch):
+        responses = [
+            _make_resp('{"is_off_topic": false, "needs_tools": false}'),
+            _make_resp("报告解读回答"),
+        ]
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = responses
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+
+        result = graph.run_qa_agent("报告说了什么", "000858", "五粮液", "报告", [], None)
+        assert result["success"] is True
+        assert "报告解读回答" in result["answer"]
+        assert result["is_off_topic"] is False
+
+    def test_sync_wrapper_error_fallback(self, monkeypatch):
+        """answer 节点 LLM 异常（understand 已兜底不抛）→ 图抛 → success=False"""
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = Exception("boom")
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+
+        result = graph.run_qa_agent("问", "000858", "五粮液", "报告", [], None)
+        assert result["success"] is False
+        assert "暂时遇到问题" in result["answer"]
