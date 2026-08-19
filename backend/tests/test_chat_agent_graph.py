@@ -148,6 +148,25 @@ class TestExecuteToolsNode:
         assert out["messages"][-1]["role"] == "tool"
         assert out["messages"][-1]["content"] == "财务数据"
 
+    def test_ok_false_propagates_to_records_and_events(self, monkeypatch):
+        """工具返回 ok=False：tool_done 事件与 records 均透传 False，不做假成功"""
+        writer = MagicMock()
+        monkeypatch.setattr(graph, "execute_tool_call",
+                            lambda name, args: {"ok": False, "text": "[无数据] x"})
+        state = graph.build_initial_state("问", "000858", "五粮液", "报告", [], None)
+        state["messages"].append({
+            "role": "assistant", "content": "",
+            "tool_calls": [{
+                "id": "call_1", "type": "function",
+                "function": {"name": "search_news", "arguments": json.dumps({"query": "x"})},
+            }],
+        })
+        out = graph.execute_tools_node(state, writer)
+        done_events = [c.args[0] for c in writer.call_args_list
+                       if c.args[0]["type"] == "tool_done"]
+        assert done_events and done_events[0]["ok"] is False
+        assert out["tool_calls"][0]["ok"] is False
+
     def test_non_dict_arguments_wrapped(self, monkeypatch):
         writer = MagicMock()
         captured = {}
@@ -261,6 +280,31 @@ class TestWorkflow:
             graph.build_initial_state("问", "000858", "五粮液", "报告", [], None))
         assert final["rounds"] == graph.MAX_TOOL_ROUNDS
         assert "回答" in final["answer_text"]
+
+    def test_multi_round_tool_results_joined_with_separator(self, monkeypatch):
+        """多轮工具：tool_results 轮与轮之间以 \\n\\n 分隔，两段数据顺序正确"""
+        responses = [
+            _make_resp('{"is_off_topic": false, "needs_tools": true, "tool_hints": ["财务"]}'),
+            _make_resp("", tool_calls=[_make_tool_call("search_news", {"query": "第一轮"})]),
+            _make_resp("", tool_calls=[_make_tool_call("search_news", {"query": "第二轮"})]),
+            _make_resp("收尾"),
+            _make_resp("最终回答"),
+        ]
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.side_effect = responses
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        # 按工具参数区分轮次返回不同数据
+        monkeypatch.setattr(graph, "execute_tool_call",
+                            lambda name, args: {"ok": True,
+                                                "text": "第一轮数据" if args.get("query") == "第一轮"
+                                                        else "第二轮数据"})
+        monkeypatch.setattr(graph, "get_tool_descriptions",
+                            lambda server: [{"name": "search_news",
+                                             "description": "资讯", "inputSchema": {}}])
+
+        final = graph.qa_workflow().invoke(
+            graph.build_initial_state("问", "000858", "五粮液", "报告", [], None))
+        assert "第一轮数据\n\n第二轮数据" in final["tool_results"]
 
     def test_off_topic_path_no_tool_events(self, monkeypatch):
         """无关问题：仅 phase understand 事件，answer 返回拒绝文案"""

@@ -204,8 +204,8 @@ def execute_tools_node(state: QaState, writer: StreamWriter) -> dict:
 
     return {
         "messages": messages,
-        "tool_results": (state["tool_results"] + "\n\n".join(results_parts)
-                         if results_parts else state["tool_results"]),
+        # 跨轮统一用 "\n\n" 连接历史与本轮结果，避免轮与轮之间无分隔符粘在一起
+        "tool_results": "\n\n".join([p for p in [state["tool_results"], *results_parts] if p]),
         "tool_calls": records,
         "rounds": state["rounds"] + 1,
     }
