@@ -366,3 +366,19 @@ class TestRunQaAgent:
         result = graph.run_qa_agent("问", "000858", "五粮液", "报告", [], None)
         assert result["success"] is False
         assert "暂时遇到问题" in result["answer"]
+
+
+class TestPrompts:
+    """prompts 模板：应要求 LLM 不要输出免责声明（方案 B，2026-08-19 免责声明重复 bug）
+
+    实证：投研模型常在回答末尾自己输出免责声明，若后端再无条件拼接 DISCLAIMER
+    会导致免责声明重复。方案 B 在 prompt 源头抑制；本测试防止将来删掉该要求。
+    """
+
+    def test_answer_prompt_instructs_no_disclaimer(self):
+        from chat_agent.prompts import ANSWER_PROMPT
+        assert "不要输出免责声明" in ANSWER_PROMPT
+
+    def test_report_only_prompt_instructs_no_disclaimer(self):
+        from chat_agent.prompts import REPORT_ONLY_PROMPT
+        assert "不要输出免责声明" in REPORT_ONLY_PROMPT
