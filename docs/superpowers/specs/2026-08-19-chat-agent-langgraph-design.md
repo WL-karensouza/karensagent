@@ -127,14 +127,16 @@ class QaState(TypedDict):
 ```python
 def build_initial_state(question, stock_code, stock_name, report_context,
                         tool_hints, history=None) -> dict:
-    context_question = f"当前对话股票目标：{stock_code}（{stock_name}）。问题：{question}"
     return {
         "question": question, "stock_code": stock_code, "stock_name": stock_name,
         "report_context": report_context, "history": history or [],
         "tool_hints": tool_hints,
         "is_off_topic": False, "needs_tools": False,
         "target_code": stock_code,
-        "messages": [{"role": "user", "content": context_question}],
+        # messages 初始仅含纯问题；目标股票上下文（含证券实体名）由 llm_round
+        # 首轮注入——target_code 在 understand 节点之后才产出，跨股票提问时 ≠ stock_code，
+        # 初始 state 构建时无法预知目标股票
+        "messages": [{"role": "user", "content": question}],
         "tool_results": "", "tool_calls": [], "rounds": 0, "answer_text": "",
     }
 ```
@@ -151,7 +153,7 @@ def build_initial_state(question, stock_code, stock_name, report_context,
 ### 6.2 `llm_round_node` — 单轮 Function Calling
 
 - 行为：`_build_tools_for(tool_hints)` 构建 tools → 原生 SDK Function Calling（`thinking` enabled, `max_tokens=2048`, `temperature=1.0`）
-- `context_question` 已在初始 state 的 `messages[0]`（含股票代码+名称，保留 2026-08-19 根因修复）
+- **首轮注入目标股票上下文**：`target_code` 由 understand 节点产出（跨股票提问时 ≠ stock_code），messages 初始仅含纯问题；`llm_round` 首轮（`rounds == 0`）把 `messages[0]` 替换为 `"当前对话股票目标：{target_code}（{stock_name}）。问题：{question}"`（保留 2026-08-19 根因修复：证券实体注入）
 - `tool_calls` 非空 → 追加**干净 assistant 消息**（只保留 `role/content/tool_calls`，剔除 `reasoning_content`，防 token 浪费/400）；为空 → 追加收尾 assistant 消息
 - 异常兜底：LLM 调用失败 → 追加收尾 assistant 消息（无工具调用），避免死循环
 - 返回：`{"messages": <完整新列表>}`
