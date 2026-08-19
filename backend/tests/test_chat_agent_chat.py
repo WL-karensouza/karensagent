@@ -43,7 +43,7 @@ class TestStreamEvents:
     def test_success_emits_events_in_order(self, monkeypatch):
         """真图 + mock LLM：工具事件实时转发 + delta/done"""
         responses = [
-            _make_resp("是否股票相关：否\n需要实时查数：是"),
+            _make_resp("是否股票相关：是\n需要实时查数：是"),
             _make_resp("", tool_calls=[_make_tool_call("search_news", {"query": "五粮液新闻"})]),
             _make_resp("收尾"),
             _make_resp("五粮液近期新闻显示……"),
@@ -93,7 +93,7 @@ class TestStreamEvents:
     def test_no_tools_produces_delta_and_done(self, monkeypatch):
         """纯报告解读：两 phase + delta + done"""
         responses = [
-            _make_resp("是否股票相关：否\n需要实时查数：否"),
+            _make_resp("是否股票相关：是\n需要实时查数：否"),
             _make_resp("纯报告解读"),
         ]
         fake_client = MagicMock()

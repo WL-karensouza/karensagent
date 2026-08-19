@@ -122,8 +122,14 @@ def understand_node(state: QaState, writer: StreamWriter) -> dict:
         )
         text = resp.choices[0].message.content or ""
         # 宽松文本行解析：字段级兜底，单字段缺失不影响其他字段
-        is_off_topic = _parse_line(text, "是否股票相关") in ("是", "true", "True")
+        # 2026-08-19 语义修正：标签"是否股票相关"遵循字面——"是"=相关、"否"=无关。
+        # （此前 prompt 规则反转为"是=无关"，与标签/代码不一致，导致股票相关
+        #   问题被 LLM 按直觉填"是"后误判为 off_topic）
+        is_off_topic = _parse_line(text, "是否股票相关") in ("否", "false", "False")
         needs_tools = _parse_line(text, "需要实时查数") in ("是", "true", "True")
+        # 矛盾守卫：判无关却要查数（LLM 自相矛盾）→ 相信查数意图，降级为不 off_topic
+        if is_off_topic and needs_tools:
+            is_off_topic = False
 
         code_text = _parse_line(text, "目标股票代码")
         target_code = state["stock_code"]

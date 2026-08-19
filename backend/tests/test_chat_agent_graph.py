@@ -47,7 +47,7 @@ class TestUnderstandNode:
 
     def test_parses_textlines_and_maps_fields(self, monkeypatch):
         writer = MagicMock()
-        resp = _make_resp("是否股票相关：否\n"
+        resp = _make_resp("是否股票相关：是\n"
                           "目标股票代码：000858\n"
                           "需要实时查数：是\n"
                           "数据方向：财务、估值")
@@ -65,7 +65,7 @@ class TestUnderstandNode:
     def test_halfwidth_colon_compatible(self, monkeypatch):
         """LLM 输出半角冒号也能解析（宽松兼容）"""
         writer = MagicMock()
-        resp = _make_resp("是否股票相关:否\n需要实时查数:是\n数据方向:财务,估值")
+        resp = _make_resp("是否股票相关:是\n需要实时查数:是\n数据方向:财务,估值")
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = resp
         monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
@@ -78,7 +78,7 @@ class TestUnderstandNode:
     def test_missing_field_falls_back_per_field(self, monkeypatch):
         """只输出部分字段：缺失字段取默认，其余字段正常"""
         writer = MagicMock()
-        resp = _make_resp("是否股票相关：是")
+        resp = _make_resp("是否股票相关：否")
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = resp
         monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
@@ -92,7 +92,7 @@ class TestUnderstandNode:
     def test_current_stock_keyword_uses_session_code(self, monkeypatch):
         """目标股票代码填"当前股票"→ 回退会话股票"""
         writer = MagicMock()
-        resp = _make_resp("是否股票相关：否\n目标股票代码：当前股票\n需要实时查数：是")
+        resp = _make_resp("是否股票相关：是\n目标股票代码：当前股票\n需要实时查数：是")
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = resp
         monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
@@ -103,7 +103,7 @@ class TestUnderstandNode:
     def test_no_hint_means_empty_list(self, monkeypatch):
         """数据方向填"无"→ 空列表"""
         writer = MagicMock()
-        resp = _make_resp("是否股票相关：否\n需要实时查数：是\n数据方向：无")
+        resp = _make_resp("是否股票相关：是\n需要实时查数：是\n数据方向：无")
         fake_client = MagicMock()
         fake_client.chat.completions.create.return_value = resp
         monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
@@ -137,6 +137,23 @@ class TestUnderstandNode:
         assert out["needs_tools"] is False
         assert out["target_code"] == "000858"
         assert out["tool_hints"] == []
+
+    def test_offtopic_but_needs_tools_degrades(self, monkeypatch):
+        """矛盾守卫：LLM 判无关却要查数（自相矛盾）→ 降级为不 off_topic
+
+        实证（2026-08-19）："分析一下该股票今日的时分线"被 LLM 误填
+        "是否股票相关：否 + 需要实时查数：是"，旧代码触发 off_topic 拒绝。
+        守卫：矛盾时相信查数意图（股票相关）。
+        """
+        writer = MagicMock()
+        resp = _make_resp("是否股票相关：否\n需要实时查数：是\n数据方向：财务")
+        fake_client = MagicMock()
+        fake_client.chat.completions.create.return_value = resp
+        monkeypatch.setattr(graph, "_get_client", lambda: fake_client)
+        state = graph.build_initial_state("分析一下该股票今日的时分线", "301301", "川宁生物", "报告", [], None)
+        out = graph.understand_node(state, writer)
+        assert out["is_off_topic"] is False   # 守卫降级：矛盾时相信查数意图
+        assert out["needs_tools"] is True
 
 
 class TestLlmRoundNode:
@@ -286,7 +303,7 @@ class TestWorkflow:
     def test_full_flow_event_sequence(self, monkeypatch):
         """带工具问答：phase understand → tool_start/tool_done → phase answer"""
         responses = [
-            _make_resp("是否股票相关：否\n需要实时查数：是\n数据方向：财务"),
+            _make_resp("是否股票相关：是\n需要实时查数：是\n数据方向：财务"),
             _make_resp("", tool_calls=[_make_tool_call("get_stock_financials", {"query": "川宁生物营收"})]),
             _make_resp("好的，分析如下"),
             _make_resp("## 川宁生物财报分析\n营收 10.9 亿"),
@@ -320,7 +337,7 @@ class TestWorkflow:
     def test_rounds_capped_at_max(self, monkeypatch):
         """LLM 一直要工具：循环在 MAX_TOOL_ROUNDS 轮后强制收尾"""
         responses = [
-            _make_resp("是否股票相关：否\n需要实时查数：是"),
+            _make_resp("是否股票相关：是\n需要实时查数：是"),
             *[_make_resp("", tool_calls=[_make_tool_call("search_news", {"query": "x"})])
               for _ in range(graph.MAX_TOOL_ROUNDS)],
             _make_resp("已收尾"),
@@ -341,7 +358,7 @@ class TestWorkflow:
     def test_multi_round_tool_results_joined_with_separator(self, monkeypatch):
         """多轮工具：tool_results 轮与轮之间以 \\n\\n 分隔，两段数据顺序正确"""
         responses = [
-            _make_resp("是否股票相关：否\n需要实时查数：是\n数据方向：财务"),
+            _make_resp("是否股票相关：是\n需要实时查数：是\n数据方向：财务"),
             _make_resp("", tool_calls=[_make_tool_call("search_news", {"query": "第一轮"})]),
             _make_resp("", tool_calls=[_make_tool_call("search_news", {"query": "第二轮"})]),
             _make_resp("收尾"),
@@ -366,7 +383,7 @@ class TestWorkflow:
     def test_off_topic_path_no_tool_events(self, monkeypatch):
         """无关问题：仅 phase understand 事件，answer 返回拒绝文案"""
         responses = [
-            _make_resp("是否股票相关：是"),
+            _make_resp("是否股票相关：否"),
             _make_resp("回答"),
         ]
         fake_client = MagicMock()
@@ -380,7 +397,7 @@ class TestWorkflow:
     def test_no_tools_only_phase_events(self, monkeypatch):
         """纯报告解读：仅两个 phase 事件"""
         responses = [
-            _make_resp("是否股票相关：否\n需要实时查数：否"),
+            _make_resp("是否股票相关：是\n需要实时查数：否"),
             _make_resp("报告解读"),
         ]
         fake_client = MagicMock()
@@ -402,7 +419,7 @@ class TestRunQaAgent:
 
     def test_sync_wrapper_invokes_graph(self, monkeypatch):
         responses = [
-            _make_resp("是否股票相关：否\n需要实时查数：否"),
+            _make_resp("是否股票相关：是\n需要实时查数：否"),
             _make_resp("报告解读回答"),
         ]
         fake_client = MagicMock()
@@ -434,7 +451,7 @@ class TestPrompts:
 
     def test_answer_prompt_instructs_no_disclaimer(self):
         from chat_agent.prompts import ANSWER_PROMPT
-        assert "不要输出免责声明" in ANSWER_PROMPT
+        assert "不添加免责声明" in ANSWER_PROMPT
 
     def test_report_only_prompt_instructs_no_disclaimer(self):
         from chat_agent.prompts import REPORT_ONLY_PROMPT
