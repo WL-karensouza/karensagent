@@ -64,6 +64,8 @@ class TestStreamEvents:
 
         types = [e["type"] for e in events]
         assert types[0] == "phase" and events[0]["phase"] == "understand"
+        # 理解完成信号先于首个工具开始（方案 B）
+        assert types.index("understand_done") < types.index("tool_start")
         assert "tool_start" in types and "tool_done" in types
         assert "delta" in types
         assert types[-1] == "done"
@@ -106,7 +108,7 @@ class TestStreamEvents:
             events = _collect(chat._stream_events(session, req, "000858", "报告", []))
 
         types = [e["type"] for e in events]
-        assert types[:2] == ["phase", "phase"]
+        assert types[:3] == ["phase", "understand_done", "phase"]
         assert types[-1] == "done"
         assert events[-1]["full"].startswith("纯报告解读")
         assert "delta" in types

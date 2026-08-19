@@ -206,7 +206,7 @@ export const getChatMessages = (stockCode, limit = 100) =>
  * SSE 问答：流式获取 karens 回答
  * @param {string} stockCode
  * @param {object} body  { question, report_id, stock_name }
- * @param {object} callbacks { onPhase, onToolStart, onToolDone, onDelta, onDone, onError, onStreamEnd }
+ * @param {object} callbacks { onPhase, onUnderstandDone, onToolStart, onToolDone, onDelta, onDone, onError, onStreamEnd }
  * @returns {AbortController}
  */
 export function fetchChatAsk(stockCode, body, callbacks = {}) {
@@ -233,6 +233,7 @@ export function fetchChatAsk(stockCode, body, callbacks = {}) {
         try {
           const data = JSON.parse(line.slice(6))
           if (data.type === 'phase') callbacks.onPhase?.(data)
+          else if (data.type === 'understand_done') callbacks.onUnderstandDone?.(data)
           else if (data.type === 'tool_start') callbacks.onToolStart?.(data)
           else if (data.type === 'tool_done') callbacks.onToolDone?.(data)
           else if (data.type === 'delta') callbacks.onDelta?.(data)

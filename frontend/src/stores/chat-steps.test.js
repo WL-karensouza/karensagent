@@ -63,6 +63,28 @@ describe('askChat 思考过程面板状态', () => {
     expect(store.chatSteps[0].status).toBe('error')
   })
 
+  it('understand_done 把理解行从 running 置为 done（方案 B 打勾）', () => {
+    const getCb = captureCallbacks()
+    store.askChat('000858', { question: 'q', report_id: null, stock_name: '五粮液' })
+    const cb = getCb()
+
+    cb.onPhase({ phase: 'understand' })
+    expect(store.chatSteps[0].status).toBe('running')
+    cb.onUnderstandDone({})
+    expect(store.chatSteps[0].status).toBe('done')
+  })
+
+  it('understand_done 幂等：已是 done 不再改动', () => {
+    const getCb = captureCallbacks()
+    store.askChat('000858', { question: 'q', report_id: null, stock_name: '五粮液' })
+    const cb = getCb()
+
+    cb.onPhase({ phase: 'understand' })
+    cb.onUnderstandDone({})
+    cb.onUnderstandDone({})
+    expect(store.chatSteps.filter(s => s.status === 'done').length).toBe(1)
+  })
+
   it('phase answer 推入生成行', () => {
     const getCb = captureCallbacks()
     store.askChat('000858', { question: 'q', report_id: null, stock_name: '五粮液' })

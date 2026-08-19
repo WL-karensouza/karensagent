@@ -156,6 +156,10 @@ def understand_node(state: QaState, writer: StreamWriter) -> dict:
             "target_code": state["stock_code"],
             "tool_hints": [],
         }
+    finally:
+        # 2026-08-19 方案 B：理解完成信号——无论解析成败都通知前端"理解阶段结束"，
+        # 前端收到后把"理解问题"行从 running 置 done（此前只能等 delta 整体清空）。
+        writer({"type": "understand_done"})
 
 
 def llm_round_node(state: QaState) -> dict:

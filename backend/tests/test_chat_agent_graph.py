@@ -60,7 +60,11 @@ class TestUnderstandNode:
         assert out["needs_tools"] is True
         assert out["target_code"] == "000858"
         assert out["tool_hints"] == ["财务", "估值"]
-        writer.assert_called_once_with({"type": "phase", "phase": "understand"})
+        # 事件序列：开始 → 完成（方案 B：理解完成后通知前端打勾）
+        assert [c.args[0] for c in writer.call_args_list] == [
+            {"type": "phase", "phase": "understand"},
+            {"type": "understand_done"},
+        ]
 
     def test_halfwidth_colon_compatible(self, monkeypatch):
         """LLM 输出半角冒号也能解析（宽松兼容）"""
@@ -331,6 +335,8 @@ class TestWorkflow:
         types = [e["type"] for e in events]
         assert types[0] == "phase" and events[0]["phase"] == "understand"
         assert "tool_start" in types and "tool_done" in types
+        # 理解完成信号先于首个工具开始（方案 B：工具执行前理解行已打勾）
+        assert types.index("understand_done") < types.index("tool_start")
         assert types[-1] == "phase" and events[-1]["phase"] == "answer"
         assert "川宁生物财报分析" in final_answer
 
@@ -392,7 +398,11 @@ class TestWorkflow:
 
         initial = graph.build_initial_state("今天天气", "000858", "五粮液", "报告", [], None)
         events = [c for c in graph.qa_workflow().stream(initial, stream_mode="custom")]
-        assert events == [{"type": "phase", "phase": "understand"}]
+        # off_topic 也发理解完成信号（无工具路径：理解✓ 后直接拒绝）
+        assert events == [
+            {"type": "phase", "phase": "understand"},
+            {"type": "understand_done"},
+        ]
 
     def test_no_tools_only_phase_events(self, monkeypatch):
         """纯报告解读：仅两个 phase 事件"""
@@ -409,9 +419,9 @@ class TestWorkflow:
         for mode, chunk in graph.qa_workflow().stream(initial, stream_mode=["custom", "updates"]):
             if mode == "custom":
                 events.append(chunk)
-        assert [e["type"] for e in events] == ["phase", "phase"]
+        assert [e["type"] for e in events] == ["phase", "understand_done", "phase"]
         assert events[0]["phase"] == "understand"
-        assert events[1]["phase"] == "answer"
+        assert events[2]["phase"] == "answer"
 
 
 class TestRunQaAgent:

@@ -457,6 +457,13 @@ export const useStockStore = defineStore('stock', {
           if (d.phase === 'understand') this.chatSteps.push({ type: 'understand', label: '理解问题', status: 'running' })
           else if (d.phase === 'answer') this.chatSteps.push({ type: 'answer', label: '生成回答', status: 'running' })
         },
+        onUnderstandDone: () => {
+          if (!isCurrent()) return
+          // 理解完成信号（后端 understand 节点收尾发的 understand_done）：
+          // 把"理解问题"行从 running 置 done，避免工具执行期间一直转圈
+          const step = [...this.chatSteps].reverse().find(s => s.type === 'understand')
+          if (step && step.status === 'running') step.status = 'done'
+        },
         onToolStart: (d) => {
           if (!isCurrent()) return
           const label = d.label || d.name

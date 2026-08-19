@@ -18,9 +18,10 @@ describe('fetchChatAsk SSE 解析', () => {
   beforeEach(() => { originalFetch = globalThis.fetch })
   afterEach(() => { globalThis.fetch = originalFetch })
 
-  it('解析 phase/tool_start/tool_done/delta/done 全链路', async () => {
+  it('解析 phase/understand_done/tool_start/tool_done/delta/done 全链路', async () => {
     const body = [
       'data: {"type":"phase","phase":"understand"}\n\n',
+      'data: {"type":"understand_done"}\n\n',
       'data: {"type":"tool_start","name":"search_news","label":"查询近期新闻"}\n\n',
       'data: {"type":"tool_done","name":"search_news","label":"查询近期新闻","ok":true}\n\n',
       'data: {"type":"delta","text":"你好"}\n\n',
@@ -32,6 +33,7 @@ describe('fetchChatAsk SSE 解析', () => {
     await new Promise((resolve) => {
       api.fetchChatAsk('000858', { question: 'q' }, {
         onPhase: (d) => calls.push(`phase:${d.phase}`),
+        onUnderstandDone: () => calls.push('understand_done'),
         onToolStart: (d) => calls.push(`tool_start:${d.label}`),
         onToolDone: (d) => calls.push(`tool_done:${d.label}:${d.ok}`),
         onDelta: (d) => calls.push(`delta:${d.text}`),
@@ -42,6 +44,7 @@ describe('fetchChatAsk SSE 解析', () => {
 
     expect(calls).toEqual([
       'phase:understand',
+      'understand_done',
       'tool_start:查询近期新闻',
       'tool_done:查询近期新闻:true',
       'delta:你好',
