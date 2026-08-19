@@ -138,6 +138,7 @@ class TestToolLoopEvents:
             "最近有什么新闻", "000858", [], on_event=events.append)
 
         assert len(records) == 1
+        assert records[0]["arguments"] == {"query": "五粮液最新新闻"}
         assert events[0]["type"] == "tool_start"
         assert events[0]["label"] == "查询近期新闻"
         assert events[1]["type"] == "tool_done"
@@ -163,3 +164,4 @@ class TestToolLoopEvents:
 
         assert events[1] == {"type": "tool_done", "name": "search_news",
                              "label": "查询近期新闻", "ok": False}
+        assert records[0]["arguments"] == {"query": "x"}

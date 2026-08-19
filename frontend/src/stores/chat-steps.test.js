@@ -116,4 +116,28 @@ describe('askChat 思考过程面板状态', () => {
     store.askChat('000858', { question: 'q2', report_id: null, stock_name: '五粮液' })
     expect(store.chatSteps).toEqual([])
   })
+
+  it('连续相同 label 的工具行合并为一行', () => {
+    const getCb = captureCallbacks()
+    store.askChat('000858', { question: 'q', report_id: null, stock_name: '五粮液' })
+    const cb = getCb()
+
+    cb.onToolStart({ name: 'get_stock_financials', label: '核对财务数据' })
+    cb.onToolStart({ name: 'get_stock_financials', label: '核对财务数据' })
+    cb.onToolStart({ name: 'get_stock_financials', label: '核对财务数据' })
+    expect(store.chatSteps.filter(s => s.type === 'tool')).toHaveLength(1)
+
+    cb.onToolDone({ name: 'get_stock_financials', label: '核对财务数据', ok: true })
+    expect(store.chatSteps.find(s => s.type === 'tool').status).toBe('done')
+  })
+
+  it('不同 label 的工具行不合并', () => {
+    const getCb = captureCallbacks()
+    store.askChat('000858', { question: 'q', report_id: null, stock_name: '五粮液' })
+    const cb = getCb()
+
+    cb.onToolStart({ name: 'search_news', label: '查询近期新闻' })
+    cb.onToolStart({ name: 'get_stock_financials', label: '核对财务数据' })
+    expect(store.chatSteps.filter(s => s.type === 'tool')).toHaveLength(2)
+  })
 })

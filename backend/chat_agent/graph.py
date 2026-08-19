@@ -84,7 +84,7 @@ def _tool_loop(question: str, target_code: str, tool_hints: list[str],
                on_event=None) -> tuple[list, list]:
     """Function Calling 循环，返回 (tool_results_text, tool_calls_records)
 
-    tool_calls_records: [{name, label, ok, duration_ms}] —— 供前端步骤卡片
+    tool_calls_records: [{name, label, ok, duration_ms, arguments}] —— 供前端步骤卡片 + 落库诊断
     on_event: 可选回调 on_event(evt: dict)，每个工具调用前发 tool_start、后发 tool_done
     """
     tools = _build_tools_for(tool_hints)
@@ -150,6 +150,7 @@ def _tool_loop(question: str, target_code: str, tool_hints: list[str],
                 "label": TOOL_FRIENDLY_NAMES.get(tc.function.name, tc.function.name),
                 "ok": out["ok"],
                 "duration_ms": dt,
+                "arguments": args,   # LLM 本次调用的参数，落库供排查工具重复调用
             })
             results.append(out["text"])
             messages.append({

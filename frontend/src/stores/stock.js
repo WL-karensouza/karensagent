@@ -459,7 +459,15 @@ export const useStockStore = defineStore('stock', {
         },
         onToolStart: (d) => {
           if (!isCurrent()) return
-          this.chatSteps.push({ type: 'tool', label: d.label || d.name, status: 'running' })
+          const label = d.label || d.name
+          // 合并连续重复的工具行：同一 label 只显示一行（LLM 可能多次调用同工具查不同指标，
+          // 避免"核对财务数据 ×8"刷屏），状态跟随最后一次执行
+          const last = this.chatSteps[this.chatSteps.length - 1]
+          if (last && last.type === 'tool' && last.label === label) {
+            last.status = 'running'
+            return
+          }
+          this.chatSteps.push({ type: 'tool', label, status: 'running' })
         },
         onToolDone: (d) => {
           if (!isCurrent()) return

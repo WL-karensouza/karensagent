@@ -1,12 +1,13 @@
 <!-- AI 问答助理面板：满高聊天结构，承载真实会话（历史 + 流式回答 + 步骤卡片） -->
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useStockStore } from '../../stores/stock.js'
 import ThinkingStepsCard from './ThinkingStepsCard.vue'
 import ChatMessageItem from './ChatMessageItem.vue'
 
 const store = useStockStore()
 const input = ref('')
+const bodyRef = ref(null)
 
 const report = computed(() => store.currentReport)
 const stockCode = computed(() => report.value?.stock_code || '')
@@ -29,6 +30,17 @@ async function send() {
 onMounted(() => {
   if (stockCode.value) store.fetchChatSession(stockCode.value)
 })
+
+/* ── 聊天框自动滚动到底：发送消息 / 思考面板出现 / 流式回答增长时，都滚到最新可见 ── */
+function scrollToBottom() {
+  if (!bodyRef.value) return
+  nextTick(() => {
+    bodyRef.value.scrollTop = bodyRef.value.scrollHeight
+  })
+}
+watch(() => store.chatMessages.length, scrollToBottom)
+watch(() => store.chatSteps.length, scrollToBottom)
+watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollToBottom)
 </script>
 
 <template>
@@ -45,7 +57,7 @@ onMounted(() => {
     </header>
 
     <!-- 会话区：滚动承载消息气泡 + 思考态 + 实时步骤卡片 -->
-    <div class="ai-body">
+    <div ref="bodyRef" class="ai-body">
       <!-- 空态：无消息时显示欢迎语 -->
       <div v-if="!messages.length" class="ai-empty">
         <p>对这份投研报告有任何疑问，尽管问 Karens。</p>
