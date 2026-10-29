@@ -1,6 +1,6 @@
 <!-- AI 问答助理面板：满高聊天结构，承载真实会话（历史 + 流式回答 + 步骤卡片） -->
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useStockStore } from '../../stores/stock.js'
 import ThinkingStepsCard from './ThinkingStepsCard.vue'
 import ChatMessageItem from './ChatMessageItem.vue'
@@ -13,8 +13,32 @@ const report = computed(() => store.currentReport)
 const stockCode = computed(() => report.value?.stock_code || '')
 const stockName = computed(() => report.value?.stock_name || '')
 
-/* 历史消息渲染（单条消息结构下沉到 ChatMessageItem） */
-const messages = computed(() => store.chatMessages)
+/* 会话归属守卫：store 的 chatMessages 是全局单份，切股票时必须丢弃上一只股票的内容，
+   否则会按旧历史误展开。loadedFor 记录「当前展示的消息属于哪只股票」。 */
+const loadedFor = ref(null)
+
+watch(stockCode, async (code) => {
+  loadedFor.value = null            // 立刻失效：切股票瞬间不渲染旧消息
+  if (!code) return
+  try {
+    await store.fetchChatSession(code)
+  } catch {
+    return                          // 接口失败：保持收拢，不阻断页面
+  }
+  /* 只认「历史消息条数 > 0」；后端每次都会建会话，不能看 session 是否存在 */
+  const sameStock = store.chatSession?.stock_code === code
+  loadedFor.value = sameStock && store.chatMessages.length > 0 ? code : null
+}, { immediate: true })
+
+/* 仅当归属匹配时才把 store 的消息透给模板（单条消息结构下沉到 ChatMessageItem） */
+const messages = computed(() =>
+  loadedFor.value === stockCode.value ? store.chatMessages : []
+)
+const steps = computed(() =>
+  loadedFor.value === stockCode.value ? store.chatSteps : []
+)
+/* 有历史消息即展开；收拢态只在无会话时出现 */
+const isExpanded = computed(() => messages.value.length > 0)
 
 async function send() {
   const q = input.value.trim()
@@ -26,10 +50,6 @@ async function send() {
     stock_name: stockName.value,
   })
 }
-
-onMounted(() => {
-  if (stockCode.value) store.fetchChatSession(stockCode.value)
-})
 
 /* ── 聊天框自动滚动到底：发送消息 / 思考面板出现 / 流式回答增长时，都滚到最新可见 ── */
 function scrollToBottom() {
@@ -44,7 +64,7 @@ watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollTo
 </script>
 
 <template>
-  <aside class="ai-panel">
+  <aside class="ai-panel" :class="isExpanded ? 'is-expanded' : 'is-collapsed'">
     <!-- 头部：karens 标识（固定） -->
     <header class="ai-head">
       <div class="ai-id">
@@ -67,7 +87,7 @@ watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollTo
       <ChatMessageItem v-for="(m, i) in messages" :key="i" :message="m" />
 
       <!-- 思考过程面板（三行：理解/工具/生成），首个 delta 时 chatSteps 清空即卸载 -->
-      <ThinkingStepsCard v-if="store.chatSteps.length" :steps="store.chatSteps" />
+      <ThinkingStepsCard v-if="steps.length" :steps="steps" />
     </div>
 
     <!-- 输入区（钉底；发送中禁用防重复提交） -->
@@ -80,23 +100,32 @@ watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollTo
 </template>
 
 <style scoped>
-/* 满高聊天面板：顶栏 + 会话区(可滚) + 钉底输入，外形不随内容跳动 */
+/* 面板：宽度固定 540px（由父容器控制），高度在收拢/展开之间过渡 */
 .ai-panel {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  background: var(--ax-surface);
+  border: 1px solid var(--ax-neutral);
+  border-radius: 20px;
   padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  height: calc(100vh - var(--topnav-height, 64px) - 48px);
-  min-height: 520px;
   box-sizing: border-box;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  overflow: hidden;
+  transition: height 0.28s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .ai-panel:hover {
-  border-color: var(--sent-soft);
-  box-shadow: 0 4px 16px rgba(45, 42, 38, 0.06);
+  border-color: var(--ax-accent);
+  box-shadow: 0 4px 16px rgba(10, 19, 23, 0.06);
+}
+/* 收拢态：无历史会话时只占 240px，问候语与输入框垂直居中 */
+.ai-panel.is-collapsed {
+  height: 240px;
+  justify-content: center;
+}
+/* 展开态：有历史消息时占满右栏可用高度，消息区内部滚动 */
+.ai-panel.is-expanded {
+  height: calc(100vh - var(--topnav-height, 64px) - 48px);
+  min-height: 520px;
 }
 /* 会话区占满中间，溢出内部滚动 */
 .ai-body {
