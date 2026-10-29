@@ -66,7 +66,6 @@ defineExpose({ focus: () => taRef.value?.focus() })
 <template>
   <div class="composer-tray" :class="`is-${density}`">
     <div class="composer-inner">
-      <span class="composer-at" aria-hidden="true">@</span>
       <textarea
         ref="taRef"
         class="composer-textarea"
@@ -78,11 +77,6 @@ defineExpose({ focus: () => taRef.value?.focus() })
         @keydown="onKeydown"
       ></textarea>
       <div class="composer-tools">
-        <!-- 以下三个为纯视觉装饰：不绑定任何事件，且不可聚焦 -->
-        <button class="composer-tool" type="button" disabled aria-hidden="true" tabindex="-1">✨ Auto ⌄</button>
-        <button class="composer-tool" type="button" disabled aria-hidden="true" tabindex="-1">⚙ Settings ⌄</button>
-        <span class="composer-spacer"></span>
-        <span class="composer-mic" aria-hidden="true">🎤</span>
         <button
           class="composer-send"
           type="button"
@@ -118,14 +112,6 @@ defineExpose({ focus: () => taRef.value?.focus() })
 }
 .composer-tray.is-compact .composer-inner { padding: 6px 10px; gap: 4px; }
 
-/* @ 装饰图标：不可聚焦 */
-.composer-at {
-  font-size: 0.85rem;
-  color: var(--ax-text-secondary);
-  line-height: 1;
-  user-select: none;
-}
-
 /* 输入区：无边框无轮廓，高度由脚本按内容与 maxRows 计算 */
 .composer-textarea {
   border: none;
@@ -146,22 +132,8 @@ defineExpose({ focus: () => taRef.value?.focus() })
 .composer-tray.is-landing .composer-textarea { min-height: 63px; }
 .composer-tray.is-compact .composer-textarea { min-height: 22px; }
 
-/* 工具行：装饰按钮禁用态、麦克风纯图标、右侧圆形发送键 */
-.composer-tools { display: flex; align-items: center; gap: 10px; }
-.composer-tool,
-.composer-mic {
-  font-size: 0.76rem;
-  color: var(--ax-text-secondary);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: default;
-  line-height: 1;
-}
-.composer-tool:disabled { opacity: 1; }
-.composer-tray.is-compact .composer-tool,
-.composer-tray.is-compact .composer-mic { font-size: var(--ax-text-tool); }
-.composer-spacer { flex: 1; }
+/* 底行：仅保留圆形发送键，右对齐 */
+.composer-tools { display: flex; align-items: center; justify-content: flex-end; }
 .composer-send {
   width: 30px;
   height: 30px;
