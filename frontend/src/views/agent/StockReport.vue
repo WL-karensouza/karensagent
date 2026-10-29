@@ -172,8 +172,7 @@ async function handlePush() {
   flex-shrink: 0;
   position: sticky;
   top: calc(var(--topnav-height, 64px) + 24px);
-  max-height: calc(100vh - var(--topnav-height, 64px) - 48px);
-  overflow: auto;
+  /* 高度交给 .ai-panel 自己按收拢/展开控制，这里不再限制，否则收拢态会被撑成滚动容器 */
 }
 /* 窄屏堆叠：与全局 .main-content 的 1280px 断点对齐 */
 @media (max-width: 1280px) {

@@ -1,6 +1,6 @@
 <!-- AI 问答助理面板：满高聊天结构，承载真实会话（历史 + 流式回答 + 步骤卡片） -->
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useStockStore } from '../../stores/stock.js'
 import ThinkingStepsCard from './ThinkingStepsCard.vue'
 import ChatMessageItem from './ChatMessageItem.vue'
@@ -13,8 +13,37 @@ const report = computed(() => store.currentReport)
 const stockCode = computed(() => report.value?.stock_code || '')
 const stockName = computed(() => report.value?.stock_name || '')
 
-/* 历史消息渲染（单条消息结构下沉到 ChatMessageItem） */
-const messages = computed(() => store.chatMessages)
+/* 会话归属守卫：store 的 chatMessages 是全局单份，切股票时必须丢弃上一只股票的内容，
+   否则会按旧历史误展开。loadedFor 记录「当前展示的消息属于哪只股票」。 */
+const loadedFor = ref(null)
+/* 请求序号：快速切换股票时，先发的请求若晚返回，不得覆盖后发请求的展示状态 */
+let loadSeq = 0
+
+watch(stockCode, async (code) => {
+  const my = ++loadSeq
+  loadedFor.value = null            // 立刻失效：切股票瞬间不渲染旧消息
+  if (!code) return
+  try {
+    await store.fetchChatSession(code)
+  } catch {
+    return                          // fetchChatSession 抛错：保持收拢（真实实现内部已吞错，此处为防御）
+  }
+  if (my !== loadSeq) return        // 期间已切到别的股票，丢弃这次结果
+  /* 只认「历史消息条数 > 0」；后端每次都会建会话，不能看 session 是否存在。
+     接口失败时 store 不覆盖旧值，下面的归属比对会把面板收回收拢态。 */
+  const sameStock = store.chatSession?.stock_code === code
+  loadedFor.value = sameStock && store.chatMessages.length > 0 ? code : null
+}, { immediate: true })
+
+/* 仅当归属匹配时才把 store 的消息透给模板（单条消息结构下沉到 ChatMessageItem） */
+const messages = computed(() =>
+  loadedFor.value === stockCode.value ? store.chatMessages : []
+)
+const steps = computed(() =>
+  loadedFor.value === stockCode.value ? store.chatSteps : []
+)
+/* 有历史消息即展开；收拢态只在无会话时出现 */
+const isExpanded = computed(() => messages.value.length > 0)
 
 async function send() {
   const q = input.value.trim()
@@ -25,11 +54,10 @@ async function send() {
     report_id: report.value?.id || null,
     stock_name: stockName.value,
   })
+  /* askChat 会同步把用户消息推入 chatMessages，此处必须同时把展示权交给当前股票：
+     否则 loadedFor 仍为 null，messages 恒为空，面板停在收拢态，用户看不到自己刚发出的提问 */
+  loadedFor.value = stockCode.value
 }
-
-onMounted(() => {
-  if (stockCode.value) store.fetchChatSession(stockCode.value)
-})
 
 /* ── 聊天框自动滚动到底：发送消息 / 思考面板出现 / 流式回答增长时，都滚到最新可见 ── */
 function scrollToBottom() {
@@ -44,7 +72,7 @@ watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollTo
 </script>
 
 <template>
-  <aside class="ai-panel">
+  <aside class="ai-panel" :class="isExpanded ? 'is-expanded' : 'is-collapsed'">
     <!-- 头部：karens 标识（固定） -->
     <header class="ai-head">
       <div class="ai-id">
@@ -67,7 +95,7 @@ watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollTo
       <ChatMessageItem v-for="(m, i) in messages" :key="i" :message="m" />
 
       <!-- 思考过程面板（三行：理解/工具/生成），首个 delta 时 chatSteps 清空即卸载 -->
-      <ThinkingStepsCard v-if="store.chatSteps.length" :steps="store.chatSteps" />
+      <ThinkingStepsCard v-if="steps.length" :steps="steps" />
     </div>
 
     <!-- 输入区（钉底；发送中禁用防重复提交） -->
@@ -80,23 +108,32 @@ watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollTo
 </template>
 
 <style scoped>
-/* 满高聊天面板：顶栏 + 会话区(可滚) + 钉底输入，外形不随内容跳动 */
+/* 面板：宽度固定 540px（由父容器控制），高度在收拢/展开之间过渡 */
 .ai-panel {
-  background: var(--bg-card);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  background: var(--ax-surface);
+  border: 1px solid var(--ax-neutral);
+  border-radius: 20px;
   padding: 20px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  height: calc(100vh - var(--topnav-height, 64px) - 48px);
-  min-height: 520px;
   box-sizing: border-box;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  overflow: hidden;
+  transition: height 0.28s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 .ai-panel:hover {
-  border-color: var(--sent-soft);
-  box-shadow: 0 4px 16px rgba(45, 42, 38, 0.06);
+  border-color: var(--ax-accent);
+  box-shadow: 0 4px 16px rgba(10, 19, 23, 0.06);
+}
+/* 收拢态：无历史会话时只占 240px，问候语与输入框垂直居中 */
+.ai-panel.is-collapsed {
+  height: 240px;
+  justify-content: center;
+}
+/* 展开态：有历史消息时占满右栏可用高度，消息区内部滚动 */
+.ai-panel.is-expanded {
+  height: calc(100vh - var(--topnav-height, 64px) - 48px);
+  min-height: 520px;
 }
 /* 会话区占满中间，溢出内部滚动 */
 .ai-body {
@@ -109,35 +146,35 @@ watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollTo
 }
 /* 头部 */
 .ai-head { display: flex; align-items: center; justify-content: space-between; }
-.ai-id { display: flex; align-items: center; gap: 8px; color: var(--sent-strong); font-size: 0.92rem; }
+.ai-id { display: flex; align-items: center; gap: 8px; color: var(--ax-text); font-size: 0.92rem; }
 /* 空态：无历史消息时居中引导 */
 .ai-empty {
   margin: auto;
   text-align: center;
-  color: var(--sent-mid);
+  color: var(--ax-text-secondary);
   font-size: 0.82rem;
   line-height: 1.7;
   padding: 0 12px;
 }
-/* 输入区钉底 */
+/* 输入区：钉底，发送键用 astryx 强调蓝 */
 .ai-input {
   display: flex; gap: 8px; flex-shrink: 0;
-  padding-top: 14px; border-top: 1px solid var(--border-color);
+  padding-top: 14px; border-top: 1px solid var(--ax-neutral);
 }
 .ai-input input {
-  flex: 1; min-width: 0; border: 1px solid var(--border-color); border-radius: var(--radius-md);
-  padding: 9px 12px; font-size: 0.8rem; font-family: inherit; color: var(--sent-strong);
-  background: var(--bg-subtle); outline: none;
+  flex: 1; min-width: 0; border: 1px solid var(--ax-neutral); border-radius: 12px;
+  padding: 9px 12px; font-size: 0.8rem; font-family: inherit;
+  color: var(--ax-text); background: var(--ax-surface); outline: none;
   transition: border-color 0.15s ease;
 }
-.ai-input input:focus { border-color: var(--accent); }
-.ai-input input:disabled { color: var(--sent-soft); cursor: not-allowed; }
-.ai-input input::placeholder { color: var(--sent-soft); }
+.ai-input input:focus { border-color: var(--ax-accent); }
+.ai-input input:disabled { color: var(--ax-text-secondary); cursor: not-allowed; }
+.ai-input input::placeholder { color: var(--ax-text-secondary); }
 .ai-input button {
-  height: 36px; padding: 0 16px; border: none; border-radius: var(--radius-md);
-  background: var(--accent); color: #fff; font-size: 0.78rem; font-family: inherit;
-  cursor: pointer; transition: background 0.15s ease;
+  height: 36px; padding: 0 16px; border: none; border-radius: 12px;
+  background: var(--ax-accent); color: #fff; font-size: 0.78rem; font-family: inherit;
+  cursor: pointer; transition: opacity 0.15s ease;
 }
-.ai-input button:hover:not(:disabled) { background: var(--accent-hover); }
+.ai-input button:hover:not(:disabled) { opacity: 0.88; }
 .ai-input button:disabled { opacity: 0.45; cursor: not-allowed; }
 </style>
