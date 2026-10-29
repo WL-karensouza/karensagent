@@ -58,15 +58,15 @@ describe('ChatComposer 输入交互', () => {
     expect(w.emitted('send')).toBeUndefined()
   })
 
-  it('装饰按钮 disabled 且 aria-hidden，不进入焦点链', () => {
+  it('不再渲染任何装饰按钮，工具行只有发送键', () => {
     const w = mountComposer()
-    const decoratives = w.findAll('.composer-tools button:not(.composer-send)')
-    expect(decoratives.length).toBeGreaterThan(0)
-    for (const btn of decoratives) {
-      expect(btn.attributes('disabled')).toBeDefined()
-      expect(btn.attributes('aria-hidden')).toBe('true')
-      expect(btn.attributes('tabindex')).toBe('-1')
-    }
+    /* @ 图标与 Auto/Settings/麦克风等占位件已全部移除 */
+    expect(w.find('.composer-at').exists()).toBe(false)
+    expect(w.find('.composer-tool').exists()).toBe(false)
+    expect(w.find('.composer-mic').exists()).toBe(false)
+    const buttons = w.findAll('.composer-tools button')
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0].classes()).toContain('composer-send')
   })
 
   it('density 影响根元素类名', () => {
