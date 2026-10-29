@@ -46,10 +46,10 @@ const steps = computed(() =>
 /* 有历史消息即展开；收拢态只在无会话时出现 */
 const isExpanded = computed(() => messages.value.length > 0)
 
-async function send() {
+function send() {
   const q = input.value.trim()
   if (!q || store.chatAsking) return
-  input.value = ''
+  /* 清空由 ChatComposer 内部完成（emit('send') 之后自行清空并同步 modelValue），此处不重复清 */
   store.askChat(stockCode.value, {
     question: q,
     report_id: report.value?.id || null,
@@ -123,7 +123,8 @@ watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollTo
   overflow: hidden;
   /* 193 = 面板自然顶部距 topnav 的偏移 169（主内容 padding 40 + 页面 padding 32 + 返回按钮 37 + 标题 60）+ 底部留白 24，保证首屏完整可见 */
   height: calc(100vh - var(--topnav-height, 64px) - 193px);
-  min-height: 420px;
+  /* min-height 不得超过可用高度，否则矮视口（<677px）下面板会溢出视口导致输入框被裁切 */
+  min-height: min(420px, calc(100vh - var(--topnav-height, 64px) - 193px));
 }
 /* 收拢态：标题与输入容器作为一组居中，再整体下移，视觉重心偏下 */
 .ai-panel.is-collapsed { justify-content: center; }
