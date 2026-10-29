@@ -61,4 +61,23 @@ describe('AiChatPanel 双态', () => {
     await flushPromises()
     expect(w.find('.ai-panel').classes()).toContain('is-collapsed')
   })
+
+  it('收拢态下输入并发送会调用 askChat', async () => {
+    const store = makeStore()
+    globalThis.__store = store
+    const w = mount(AiChatPanel)
+    await flushPromises()
+    await w.find('.ai-input input').setValue('这只票的风险点？')
+    await w.find('.ai-input button').trigger('click')
+    expect(store.askChat).toHaveBeenCalledWith('000001', expect.objectContaining({
+      question: '这只票的风险点？',
+    }))
+  })
+
+  it('发送中禁用发送按钮', async () => {
+    globalThis.__store = makeStore({ chatAsking: true })
+    const w = mount(AiChatPanel)
+    await flushPromises()
+    expect(w.find('.ai-input button').attributes('disabled')).toBeDefined()
+  })
 })

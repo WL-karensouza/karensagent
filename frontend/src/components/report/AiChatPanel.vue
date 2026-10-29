@@ -138,35 +138,35 @@ watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollTo
 }
 /* 头部 */
 .ai-head { display: flex; align-items: center; justify-content: space-between; }
-.ai-id { display: flex; align-items: center; gap: 8px; color: var(--sent-strong); font-size: 0.92rem; }
+.ai-id { display: flex; align-items: center; gap: 8px; color: var(--ax-text); font-size: 0.92rem; }
 /* 空态：无历史消息时居中引导 */
 .ai-empty {
   margin: auto;
   text-align: center;
-  color: var(--sent-mid);
+  color: var(--ax-text-secondary);
   font-size: 0.82rem;
   line-height: 1.7;
   padding: 0 12px;
 }
-/* 输入区钉底 */
+/* 输入区：钉底，发送键用 astryx 强调蓝 */
 .ai-input {
   display: flex; gap: 8px; flex-shrink: 0;
-  padding-top: 14px; border-top: 1px solid var(--border-color);
+  padding-top: 14px; border-top: 1px solid var(--ax-neutral);
 }
 .ai-input input {
-  flex: 1; min-width: 0; border: 1px solid var(--border-color); border-radius: var(--radius-md);
-  padding: 9px 12px; font-size: 0.8rem; font-family: inherit; color: var(--sent-strong);
-  background: var(--bg-subtle); outline: none;
+  flex: 1; min-width: 0; border: 1px solid var(--ax-neutral); border-radius: 12px;
+  padding: 9px 12px; font-size: 0.8rem; font-family: inherit;
+  color: var(--ax-text); background: var(--ax-surface); outline: none;
   transition: border-color 0.15s ease;
 }
-.ai-input input:focus { border-color: var(--accent); }
-.ai-input input:disabled { color: var(--sent-soft); cursor: not-allowed; }
-.ai-input input::placeholder { color: var(--sent-soft); }
+.ai-input input:focus { border-color: var(--ax-accent); }
+.ai-input input:disabled { color: var(--ax-text-secondary); cursor: not-allowed; }
+.ai-input input::placeholder { color: var(--ax-text-secondary); }
 .ai-input button {
-  height: 36px; padding: 0 16px; border: none; border-radius: var(--radius-md);
-  background: var(--accent); color: #fff; font-size: 0.78rem; font-family: inherit;
-  cursor: pointer; transition: background 0.15s ease;
+  height: 36px; padding: 0 16px; border: none; border-radius: 12px;
+  background: var(--ax-accent); color: #fff; font-size: 0.78rem; font-family: inherit;
+  cursor: pointer; transition: opacity 0.15s ease;
 }
-.ai-input button:hover:not(:disabled) { background: var(--accent-hover); }
+.ai-input button:hover:not(:disabled) { opacity: 0.88; }
 .ai-input button:disabled { opacity: 0.45; cursor: not-allowed; }
 </style>
