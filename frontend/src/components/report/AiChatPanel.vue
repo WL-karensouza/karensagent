@@ -16,16 +16,21 @@ const stockName = computed(() => report.value?.stock_name || '')
 /* 会话归属守卫：store 的 chatMessages 是全局单份，切股票时必须丢弃上一只股票的内容，
    否则会按旧历史误展开。loadedFor 记录「当前展示的消息属于哪只股票」。 */
 const loadedFor = ref(null)
+/* 请求序号：快速切换股票时，先发的请求若晚返回，不得覆盖后发请求的展示状态 */
+let loadSeq = 0
 
 watch(stockCode, async (code) => {
+  const my = ++loadSeq
   loadedFor.value = null            // 立刻失效：切股票瞬间不渲染旧消息
   if (!code) return
   try {
     await store.fetchChatSession(code)
   } catch {
-    return                          // 接口失败：保持收拢，不阻断页面
+    return                          // fetchChatSession 抛错：保持收拢（真实实现内部已吞错，此处为防御）
   }
-  /* 只认「历史消息条数 > 0」；后端每次都会建会话，不能看 session 是否存在 */
+  if (my !== loadSeq) return        // 期间已切到别的股票，丢弃这次结果
+  /* 只认「历史消息条数 > 0」；后端每次都会建会话，不能看 session 是否存在。
+     接口失败时 store 不覆盖旧值，下面的归属比对会把面板收回收拢态。 */
   const sameStock = store.chatSession?.stock_code === code
   loadedFor.value = sameStock && store.chatMessages.length > 0 ? code : null
 }, { immediate: true })
@@ -49,6 +54,9 @@ async function send() {
     report_id: report.value?.id || null,
     stock_name: stockName.value,
   })
+  /* askChat 会同步把用户消息推入 chatMessages，此处必须同时把展示权交给当前股票：
+     否则 loadedFor 仍为 null，messages 恒为空，面板停在收拢态，用户看不到自己刚发出的提问 */
+  loadedFor.value = stockCode.value
 }
 
 /* ── 聊天框自动滚动到底：发送消息 / 思考面板出现 / 流式回答增长时，都滚到最新可见 ── */

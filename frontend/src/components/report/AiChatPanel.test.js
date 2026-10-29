@@ -80,4 +80,24 @@ describe('AiChatPanel 双态', () => {
     await flushPromises()
     expect(w.find('.ai-input button').attributes('disabled')).toBeDefined()
   })
+
+  it('收拢态发出首条消息后立即展开并显示该消息', async () => {
+    const store = makeStore()
+    /* 模拟真实 store 行为：askChat 会同步把用户消息推入 chatMessages */
+    store.askChat = vi.fn((code, payload) => {
+      store.chatMessages.push({ role: 'user', content: payload.question, created_at: '' })
+      return { abort: vi.fn() }
+    })
+    globalThis.__store = store
+    const w = mount(AiChatPanel)
+    await flushPromises()
+    expect(w.find('.ai-panel').classes()).toContain('is-collapsed')
+
+    await w.find('.ai-input input').setValue('这只票的风险点？')
+    await w.find('.ai-input button').trigger('click')
+    await flushPromises()
+
+    expect(w.find('.ai-panel').classes()).toContain('is-expanded')
+    expect(w.text()).toContain('这只票的风险点？')
+  })
 })
