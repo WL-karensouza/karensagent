@@ -4,6 +4,10 @@ import * as api from '../api/index.js'
 /* localStorage 键名 — 公司画像缓存 */
 const PROFILE_CACHE_KEY = 'stock_company_profile'
 
+/* 会话加载请求序号：放在模块级而非 state，避免参与响应式更新。
+   用于识别「先发后回」的过期响应，防止其覆盖新股票的数据。 */
+let chatFetchSeq = 0
+
 export const useStockStore = defineStore('stock', {
   state: () => ({
     /* 报告 — 按页面独立，避免互相污染 */
@@ -411,10 +415,22 @@ export const useStockStore = defineStore('stock', {
     },
 
     /* ── AI 问答 ── */
+    /**
+     * 加载指定股票的会话历史。
+     *
+     * 两层防护，避免 store 被不属于当前股票的数据污染：
+     * ① 请求序号：切股票时先发的请求若晚返回，直接丢弃，不覆盖后发请求的结果；
+     * ② 归属校验：响应里的 stock_code 必须与请求一致才写入（防后端返回错数据）。
+     *
+     * 污染后果：chatSession.stock_code 一旦变成别的股票，askChat 的 isCurrent()
+     * 会把后续 SSE 回调全部丢弃，用户提问后永远收不到回答。
+     */
     async fetchChatSession(stockCode) {
+      const seq = ++chatFetchSeq
       try {
         const res = await api.getChatSession(stockCode)
-        if (res.code === 0) {
+        if (seq !== chatFetchSeq) return
+        if (res.code === 0 && res.data.session?.stock_code === stockCode) {
           this.chatSession = res.data.session
           this.chatMessages = res.data.messages || []
         }
