@@ -74,3 +74,32 @@ describe('ChatComposer 输入交互', () => {
     expect(mountComposer({ density: 'landing' }).find('.composer-tray').classes()).toContain('is-landing')
   })
 })
+
+describe('ChatComposer 思考中状态', () => {
+  it('空闲时显示静态点阵，不带动画态类名', () => {
+    const w = mountComposer({ modelValue: '评分依据' })
+    const btn = w.find('.composer-send')
+    expect(btn.classes()).not.toContain('is-thinking')
+    expect(btn.attributes('aria-label')).toBe('发送')
+    expect(btn.attributes('aria-busy')).toBeUndefined()
+    /* 静/动两张点阵都常驻 DOM（靠 visibility 切换），避免单张切 src 的加载空档闪烁 */
+    expect(w.findAll('.composer-matrix')).toHaveLength(2)
+  })
+
+  it('loading 时切为动画点阵、按钮禁用且标记 aria-busy', () => {
+    const w = mountComposer({ modelValue: '', loading: true })
+    const btn = w.find('.composer-send')
+    expect(btn.classes()).toContain('is-thinking')
+    expect(btn.attributes('disabled')).toBeDefined()
+    expect(btn.attributes('aria-busy')).toBe('true')
+    expect(btn.attributes('aria-label')).toBe('AI 正在思考')
+  })
+
+  it('loading 时点击发送键与回车都不触发 send', async () => {
+    /* 输入框有内容也必须拦住：思考中不允许发下一条 */
+    const w = mountComposer({ modelValue: '评分依据', loading: true })
+    await w.find('.composer-send').trigger('click')
+    await triggerEnter(w)
+    expect(w.emitted('send')).toBeUndefined()
+  })
+})

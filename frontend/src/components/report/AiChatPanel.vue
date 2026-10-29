@@ -85,6 +85,7 @@ watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollTo
         density="landing"
         :max-rows="5"
         :disabled="store.chatAsking"
+        :loading="store.chatAsking"
         @send="send"
       />
     </template>
@@ -103,6 +104,7 @@ watch(() => store.chatMessages[store.chatMessages.length - 1]?.content, scrollTo
         density="compact"
         :max-rows="3"
         :disabled="store.chatAsking"
+        :loading="store.chatAsking"
         @send="send"
       />
     </template>

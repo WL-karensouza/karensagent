@@ -1,0 +1,31 @@
+<!--
+  点阵静态图标（AI 空闲）
+  几何与 matrix-loader.svg 一致：92×92 画布，5×5 圆点，圆心 8/27/46/65/84，半径 8
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="92" height="92" viewBox="0 0 92 92">
+  <circle cx="8" cy="8" r="8" fill="#FFFFFF"/>
+  <circle cx="27" cy="8" r="8" fill="#FFFFFF"/>
+  <circle cx="46" cy="8" r="8" fill="#FFFFFF"/>
+  <circle cx="65" cy="8" r="8" fill="#FFFFFF"/>
+  <circle cx="84" cy="8" r="8" fill="#FFFFFF"/>
+  <circle cx="8" cy="27" r="8" fill="#FFFFFF"/>
+  <circle cx="27" cy="27" r="8" fill="#FFFFFF"/>
+  <circle cx="46" cy="27" r="8" fill="#FFFFFF"/>
+  <circle cx="65" cy="27" r="8" fill="#FFFFFF"/>
+  <circle cx="84" cy="27" r="8" fill="#FFFFFF"/>
+  <circle cx="8" cy="46" r="8" fill="#FFFFFF"/>
+  <circle cx="27" cy="46" r="8" fill="#FFFFFF"/>
+  <circle cx="46" cy="46" r="8" fill="#FFFFFF"/>
+  <circle cx="65" cy="46" r="8" fill="#FFFFFF"/>
+  <circle cx="84" cy="46" r="8" fill="#FFFFFF"/>
+  <circle cx="8" cy="65" r="8" fill="#FFFFFF"/>
+  <circle cx="27" cy="65" r="8" fill="#FFFFFF"/>
+  <circle cx="46" cy="65" r="8" fill="#FFFFFF"/>
+  <circle cx="65" cy="65" r="8" fill="#FFFFFF"/>
+  <circle cx="84" cy="65" r="8" fill="#FFFFFF"/>
+  <circle cx="8" cy="84" r="8" fill="#FFFFFF"/>
+  <circle cx="27" cy="84" r="8" fill="#FFFFFF"/>
+  <circle cx="46" cy="84" r="8" fill="#FFFFFF"/>
+  <circle cx="65" cy="84" r="8" fill="#FFFFFF"/>
+  <circle cx="84" cy="84" r="8" fill="#FFFFFF"/>
+</svg>
