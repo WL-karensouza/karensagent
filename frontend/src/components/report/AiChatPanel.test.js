@@ -67,8 +67,8 @@ describe('AiChatPanel 双态', () => {
     globalThis.__store = store
     const w = mount(AiChatPanel)
     await flushPromises()
-    await w.find('.ai-input input').setValue('这只票的风险点？')
-    await w.find('.ai-input button').trigger('click')
+    await w.find('.composer-textarea').setValue('这只票的风险点？')
+    await w.find('.composer-send').trigger('click')
     expect(store.askChat).toHaveBeenCalledWith('000001', expect.objectContaining({
       question: '这只票的风险点？',
     }))
@@ -78,7 +78,7 @@ describe('AiChatPanel 双态', () => {
     globalThis.__store = makeStore({ chatAsking: true })
     const w = mount(AiChatPanel)
     await flushPromises()
-    expect(w.find('.ai-input button').attributes('disabled')).toBeDefined()
+    expect(w.find('.composer-send').attributes('disabled')).toBeDefined()
   })
 
   it('收拢态发出首条消息后立即展开并显示该消息', async () => {
@@ -93,11 +93,33 @@ describe('AiChatPanel 双态', () => {
     await flushPromises()
     expect(w.find('.ai-panel').classes()).toContain('is-collapsed')
 
-    await w.find('.ai-input input').setValue('这只票的风险点？')
-    await w.find('.ai-input button').trigger('click')
+    await w.find('.composer-textarea').setValue('这只票的风险点？')
+    await w.find('.composer-send').trigger('click')
     await flushPromises()
 
     expect(w.find('.ai-panel').classes()).toContain('is-expanded')
     expect(w.text()).toContain('这只票的风险点？')
+  })
+
+  it('收拢态渲染大标题问候与悬浮输入容器', async () => {
+    globalThis.__store = makeStore()
+    const w = mount(AiChatPanel)
+    await flushPromises()
+    expect(w.find('.ai-hero').exists()).toBe(true)
+    expect(w.text()).toContain('Hi, Karens')
+    expect(w.text()).toContain('关于这支股票有什么可以帮你的吗？')
+    expect(w.find('.composer-tray').classes()).toContain('is-landing')
+    expect(w.find('.ai-head').exists()).toBe(false)   // 旧头部已删除
+  })
+
+  it('展开态使用紧凑密度且不渲染大标题', async () => {
+    globalThis.__store = makeStore({
+      chatMessages: [{ role: 'user', content: '评分依据？', created_at: '' }],
+      chatSession: { stock_code: '000001' },
+    })
+    const w = mount(AiChatPanel)
+    await flushPromises()
+    expect(w.find('.composer-tray').classes()).toContain('is-compact')
+    expect(w.find('.ai-hero').exists()).toBe(false)
   })
 })
