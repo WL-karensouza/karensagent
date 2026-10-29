@@ -31,3 +31,6 @@ dist/
 
 # subagent-driven-development 技能暂存区（ledger/brief/report）
 .superpowers/
+
+# Claude Code worktree 工作区（本地临时，不进版本库）
+.claude/worktrees/
