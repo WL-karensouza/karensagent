@@ -39,6 +39,16 @@
   --ax-radius-chat: 28px;
   --ax-pad-block: 12px;
   --ax-pad-inline: 16px;
+  /* ── astryx landing 形态 token（0.75 等比缩放自模板 720px 宽）── */
+  --ax-text-hi: 13px;
+  --ax-text-display: 26px;
+  --ax-radius-tray: 21px;
+  --ax-radius-inner: 12px;
+  --ax-pad-tray: 9px;
+  --ax-pad-tray-compact: 6px;
+  --ax-text-tool: 11px;
+  --ax-shadow-low: 0px 1px 1px rgba(0, 0, 0, 0.1), 0px 2px 8px rgba(0, 0, 0, 0.1);
+  --ax-shadow-med: 0px 1px 2px rgba(0, 0, 0, 0.1), 0px 2px 12px rgba(0, 0, 0, 0.1);
 }
 
 *,
