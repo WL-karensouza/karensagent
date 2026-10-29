@@ -48,31 +48,24 @@ function renderMd(text) { return marked.parse(text) }
   align-items: flex-start; min-width: 0; max-width: calc(100% - 42px);
 }
 .chat-msg.user .chat-main { align-items: flex-end; }
-/* 元信息行：名称·时间，浅灰小字 */
-.chat-meta { font-size: 0.72rem; color: var(--sent-mid); line-height: 1.4; }
-/* 气泡：浅色系，最大宽避免顶满 */
+/* 元信息行：名称·时间，次要色小字 */
+.chat-meta { font-size: 0.72rem; color: var(--ax-text-secondary); line-height: 1.4; }
+/* 气泡：双方同一套排版，仅底色不同（astryx：助理透明、用户淡蓝灰） */
 .chat-bubble {
-  max-width: 100%;
-  padding: 9px 12px;
-  border-radius: var(--radius-md);
+  max-width: max(80%, 280px);
+  padding: var(--ax-pad-block) var(--ax-pad-inline);
+  border-radius: var(--ax-radius-chat);
   font-size: 0.82rem;
   line-height: 1.65;
   word-break: break-word;
   box-sizing: border-box;
+  color: var(--ax-text);
 }
 .chat-bubble :deep(p) { margin: 0 0 6px; }
 .chat-bubble :deep(p:last-child) { margin-bottom: 0; }
 .chat-bubble :deep(ul), .chat-bubble :deep(ol) { margin: 4px 0; padding-left: 18px; }
 .chat-bubble :deep(strong) { font-weight: 600; }
-.chat-bubble :deep(code) { background: var(--bg-hover); padding: 1px 5px; border-radius: 4px; font-size: 0.78rem; }
-.chat-msg.user .chat-bubble {
-  background: var(--accent);
-  color: #fff;
-  border-bottom-right-radius: 4px;
-}
-.chat-msg.assistant .chat-bubble {
-  background: var(--sent-bg);
-  color: var(--sent-strong);
-  border-bottom-left-radius: 4px;
-}
+.chat-bubble :deep(code) { background: var(--ax-hover); padding: 1px 5px; border-radius: 4px; font-size: 0.78rem; }
+.chat-msg.user .chat-bubble { background: var(--ax-neutral); }
+.chat-msg.assistant .chat-bubble { background: transparent; }
 </style>
